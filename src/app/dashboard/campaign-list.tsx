@@ -8,6 +8,7 @@ import { RegisterTokenForm } from "./register-token-form";
 interface Token {
   id: string;
   mintAddress: string;
+  deployerWallet: string;
   name: string | null;
   symbol: string | null;
   createdAt: string;
@@ -225,12 +226,14 @@ export function CampaignList({ walletAddress }: Props) {
                 >
                   GoFundMe ↗
                 </a>
-                <button
-                  onClick={() => setRegisterTokenFor(c.id)}
-                  className="inline-flex h-8 items-center rounded-lg border border-gray-200 bg-gray-50 px-3 text-xs text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
-                >
-                  + Token
-                </button>
+                {!c.tokens.some((t) => t.deployerWallet === walletAddress) && (
+                  <button
+                    onClick={() => setRegisterTokenFor(c.id)}
+                    className="inline-flex h-8 items-center rounded-lg border border-gray-200 bg-gray-50 px-3 text-xs text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                  >
+                    + Token
+                  </button>
+                )}
               </div>
             </div>
           ))}

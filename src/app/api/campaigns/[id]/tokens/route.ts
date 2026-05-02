@@ -53,6 +53,17 @@ export async function POST(
       );
     }
 
+    // Check if this deployer already has a token in this campaign
+    const deployerTokenInCampaign = await prisma.token.findFirst({
+      where: { campaignId: id, deployerWallet },
+    });
+    if (deployerTokenInCampaign) {
+      return NextResponse.json(
+        { error: "You already have a token registered for this campaign" },
+        { status: 409 }
+      );
+    }
+
     // Verify on-chain that the wallet is the token deployer
     const verification = await verifyTokenDeployer(mintAddress, deployerWallet);
     if (!verification.verified) {
