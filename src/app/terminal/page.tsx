@@ -12,13 +12,13 @@ interface TerminalEvent {
 }
 
 const typeColors: Record<string, string> = {
-  fee_received: "text-emerald-400",
-  sol_transfer: "text-blue-400",
-  donation: "text-purple-400",
-  campaign_created: "text-yellow-400",
-  token_registered: "text-cyan-400",
-  error: "text-red-400",
-  info: "text-gray-400",
+  fee_received: "text-emerald-600",
+  sol_transfer: "text-blue-600",
+  donation: "text-purple-600",
+  campaign_created: "text-yellow-600",
+  token_registered: "text-cyan-600",
+  error: "text-red-600",
+  info: "text-gray-500",
 };
 
 function getTypeColor(type: string): string {
@@ -123,17 +123,17 @@ export default function TerminalPage() {
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col bg-white px-4 py-4 sm:px-6">
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-950 shadow-2xl shadow-emerald-500/5">
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
         {/* Terminal chrome bar */}
-        <div className="flex items-center justify-between border-b border-gray-800 bg-gray-900 px-4 py-3">
+        <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-3">
           <div className="flex items-center gap-3">
             {/* macOS dots */}
             <div className="flex items-center gap-1.5">
-              <div className="h-3 w-3 rounded-full bg-red-500/80" />
-              <div className="h-3 w-3 rounded-full bg-yellow-500/80" />
-              <div className="h-3 w-3 rounded-full bg-green-500/80" />
+              <div className="h-3 w-3 rounded-full bg-red-400" />
+              <div className="h-3 w-3 rounded-full bg-yellow-400" />
+              <div className="h-3 w-3 rounded-full bg-green-400" />
             </div>
-            <span className="ml-2 font-mono text-xs text-white/40">
+            <span className="ml-2 font-mono text-xs text-gray-400">
               PumpFundMe Terminal
             </span>
           </div>
@@ -143,23 +143,23 @@ export default function TerminalPage() {
               <div
                 className={`h-2 w-2 rounded-full ${
                   connected
-                    ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
-                    : "bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.5)]"
+                    ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.4)]"
+                    : "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.4)]"
                 }`}
               />
-              <span className="font-mono text-[10px] uppercase tracking-wider text-white/40">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-gray-400">
                 {connected ? "Connected" : "Disconnected"}
               </span>
             </div>
             {/* Event count */}
-            <span className="font-mono text-[10px] text-white/25">
+            <span className="font-mono text-[10px] text-gray-400">
               {filtered.length} events
             </span>
             {/* Filter */}
             <select
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono text-xs text-white/70 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+              className="rounded-md border border-gray-200 bg-white px-2 py-1 font-mono text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
             >
               <option value="all">All Campaigns</option>
               {campaigns.map((c) => (
@@ -175,10 +175,10 @@ export default function TerminalPage() {
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto bg-gray-950 p-4 font-mono text-sm"
+          className="flex-1 overflow-y-auto bg-white p-4 font-mono text-sm"
         >
           {filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-white/20">
+            <div className="flex flex-col items-center justify-center py-20 text-gray-300">
               <span className="text-2xl animate-cursor-blink">▌</span>
               <p className="mt-3 text-xs tracking-wider uppercase">
                 Waiting for events…
@@ -189,9 +189,9 @@ export default function TerminalPage() {
               {filtered.map((event, i) => (
                 <div
                   key={event.id || i}
-                  className="flex gap-3 rounded px-2 py-1 leading-relaxed transition-colors hover:bg-white/[0.02]"
+                  className="flex gap-3 rounded px-2 py-1 leading-relaxed transition-colors hover:bg-gray-50"
                 >
-                  <span className="shrink-0 tabular-nums text-white/20">
+                  <span className="shrink-0 tabular-nums text-gray-400">
                     {formatTimestamp(event.timestamp)}
                   </span>
                   <span
@@ -202,11 +202,11 @@ export default function TerminalPage() {
                     {event.type.replace(/_/g, " ")}
                   </span>
                   {event.campaignName && (
-                    <span className="shrink-0 text-white/30">
+                    <span className="shrink-0 text-gray-400">
                       [{event.campaignName}]
                     </span>
                   )}
-                  <span className="text-white/75">{event.message}</span>
+                  <span className="text-gray-700">{event.message}</span>
                 </div>
               ))}
             </div>
@@ -216,13 +216,13 @@ export default function TerminalPage() {
 
         {/* Auto-scroll button */}
         {!autoScroll && (
-          <div className="border-t border-gray-800 px-4 py-2 text-center bg-gray-900">
+          <div className="border-t border-gray-200 px-4 py-2 text-center bg-gray-50">
             <button
               onClick={() => {
                 setAutoScroll(true);
                 bottomRef.current?.scrollIntoView({ behavior: "smooth" });
               }}
-              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3 py-1 font-mono text-xs text-emerald-400 transition-colors hover:bg-emerald-500/10"
+              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-50 px-3 py-1 font-mono text-xs text-emerald-600 transition-colors hover:bg-emerald-100"
             >
               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7" />
