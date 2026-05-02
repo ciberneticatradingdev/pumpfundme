@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Campaign {
+  id               String        @id @default(cuid())
+  name             String
+  description      String?
+  goFundMeUrl      String
+  imageUrl         String?
+  creatorWallet    String?
+  status           CampaignStatus @default(ACTIVE)
+  totalSolReceived Float       @default(0)
+  totalDonatedUsd  Float       @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  tokens         Token[]
+  transactions   Transaction[]
+  events         Event[]
+}
+
+model Token {
+  id             String   @id @default(cuid())
+  mintAddress    String   @unique
+  campaignId     String
+  deployerWallet String
+  name           String?
+  symbol         String?
+  createdAt      DateTime @default(now())
+
+  campaign       Campaign      @relation(fields: [campaignId], references: [id])
+  transactions   Transaction[]
+}
+
+model Transaction {
+  id           String          @id @default(cuid())
+  type         TransactionType
+  campaignId   String
+  tokenId      String?
+  amountSol    Float
+  amountUsd    Float?
+  txSignature  String?         @unique
+  status       TxStatus        @default(PENDING)
+  metadata     Json?
+  createdAt    DateTime        @default(now())
+
+  campaign     Campaign        @relation(fields: [campaignId], references: [id])
+  token        Token?          @relation(fields: [tokenId], references: [id])
+}
+
+model Event {
+  id         String   @id @default(cuid())
+  type       String
+  campaignId String?
+  message    String
+  data       Json?
+  createdAt  DateTime @default(now())
+
+  campaign   Campaign? @relation(fields: [campaignId], references: [id])
+}
+
+enum CampaignStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum TransactionType {
+  FEE_RECEIVED
+  SOL_TRANSFER
+  DONATION
+}
+
+enum TxStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+}
