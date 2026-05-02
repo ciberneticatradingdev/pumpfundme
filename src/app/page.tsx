@@ -107,13 +107,12 @@ export default function LandingPage() {
 
         <div className="relative z-10 animate-fade-in-up">
           {/* Logo */}
-          <div className="mx-auto mb-8 animate-float">
+          <div className="flex justify-center mb-8">
             <Image
               src="/logo.svg"
               alt="PumpFundMe Logo"
               width={80}
               height={80}
-              className="animate-pulse-glow"
               priority
             />
           </div>
