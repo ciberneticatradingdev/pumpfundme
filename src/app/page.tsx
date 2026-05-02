@@ -102,7 +102,7 @@ export default function LandingPage() {
       <section className="relative flex min-h-[100vh] flex-col items-center justify-center overflow-hidden px-4 text-center">
         {/* Background: grid + radial glow */}
         <div className="bg-grid pointer-events-none absolute inset-0" />
-        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[600px] rounded-full bg-emerald-500/10 blur-[120px]" />
+        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[600px] rounded-full bg-emerald-200/30 blur-[120px]" />
         <div className="pointer-events-none absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/20 to-transparent" />
 
         <div className="relative z-10 animate-fade-in-up">
@@ -120,16 +120,16 @@ export default function LandingPage() {
 
           {/* Title */}
           <h1 className="text-6xl font-extrabold tracking-tight sm:text-7xl lg:text-8xl">
-            <span className="bg-gradient-to-r from-emerald-400 via-green-300 to-emerald-500 bg-clip-text text-transparent animate-gradient">
+            <span className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-500 bg-clip-text text-transparent animate-gradient">
               PumpFundMe
             </span>
           </h1>
 
           {/* Subtitle */}
-          <p className="mx-auto mt-6 max-w-xl text-xl text-white/60 sm:text-2xl animate-fade-in-up-delay-1">
+          <p className="mx-auto mt-6 max-w-xl text-xl text-gray-500 sm:text-2xl animate-fade-in-up-delay-1">
             Memecoins for good. 100% to the cause.
           </p>
-          <p className="mx-auto mt-3 max-w-lg text-sm text-white/35 animate-fade-in-up-delay-2">
+          <p className="mx-auto mt-3 max-w-lg text-sm text-gray-400 animate-fade-in-up-delay-2">
             Launch a token on pump.fun, link it to a campaign, and every fee
             goes straight to charity. No middlemen. No commission.
           </p>
@@ -138,13 +138,13 @@ export default function LandingPage() {
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center animate-fade-in-up-delay-3">
             <Link
               href="/dashboard"
-              className="inline-flex h-12 items-center rounded-xl bg-emerald-500 px-8 text-sm font-semibold text-black transition-all hover:bg-emerald-400 hover:scale-105 active:scale-95"
+              className="inline-flex h-12 items-center rounded-xl bg-emerald-500 px-8 text-sm font-semibold text-white transition-all hover:bg-emerald-400 hover:scale-105 active:scale-95"
             >
               Launch Campaign
             </Link>
             <Link
               href="/terminal"
-              className="inline-flex h-12 items-center rounded-xl border border-white/10 bg-white/5 px-8 text-sm font-medium text-white/80 backdrop-blur transition-all hover:bg-white/10 hover:border-white/20 hover:scale-105 active:scale-95"
+              className="inline-flex h-12 items-center rounded-xl border border-gray-200 bg-gray-50 px-8 text-sm font-medium text-gray-700 backdrop-blur transition-all hover:bg-gray-100 hover:border-gray-300 hover:scale-105 active:scale-95"
             >
               View Terminal
             </Link>
@@ -153,7 +153,7 @@ export default function LandingPage() {
 
         {/* Scroll indicator */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-fade-in-up-delay-4">
-          <div className="flex flex-col items-center gap-2 text-white/20">
+          <div className="flex flex-col items-center gap-2 text-gray-300">
             <span className="text-xs tracking-widest uppercase">Scroll</span>
             <svg className="h-4 w-4 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7" />
@@ -163,18 +163,18 @@ export default function LandingPage() {
       </section>
 
       {/* ── Stats Bar ── */}
-      <section className="relative border-y border-white/5">
+      <section className="relative border-y border-gray-200">
         <div className="mx-auto flex max-w-4xl flex-col items-center justify-around gap-6 px-4 py-8 sm:flex-row sm:gap-0">
           {stats.map((stat, i) => (
             <div key={stat.label} className="flex items-center gap-6">
               {i > 0 && (
-                <div className="hidden h-12 w-px bg-white/10 sm:block" />
+                <div className="hidden h-12 w-px bg-gray-200 sm:block" />
               )}
               <div className="glass rounded-xl px-8 py-4 text-center">
-                <p className="text-3xl font-bold tabular-nums text-emerald-400">
+                <p className="text-3xl font-bold tabular-nums text-emerald-600">
                   {stat.value}
                 </p>
-                <p className="mt-1 text-xs uppercase tracking-wider text-white/40">
+                <p className="mt-1 text-xs uppercase tracking-wider text-gray-400">
                   {stat.label}
                 </p>
               </div>
@@ -186,7 +186,7 @@ export default function LandingPage() {
       {/* ── How It Works ── */}
       <section className="mx-auto max-w-5xl px-4 py-24">
         <div className="text-center animate-fade-in-up">
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-emerald-400">
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-emerald-600">
             How it works
           </p>
           <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
@@ -196,7 +196,7 @@ export default function LandingPage() {
 
         <div className="relative mt-16 grid gap-8 md:grid-cols-3">
           {/* Dashed connecting line (desktop) */}
-          <div className="pointer-events-none absolute top-12 left-[16.67%] right-[16.67%] hidden h-px border-t border-dashed border-emerald-500/20 md:block" />
+          <div className="pointer-events-none absolute top-12 left-[16.67%] right-[16.67%] hidden h-px border-t border-dashed border-emerald-300 md:block" />
 
           {steps.map((step, i) => (
             <div
@@ -204,27 +204,27 @@ export default function LandingPage() {
               className={`animate-fade-in-up-delay-${i + 1} relative flex flex-col items-center text-center`}
             >
               {/* Step circle */}
-              <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
+              <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200">
                 {step.icon}
               </div>
-              <span className="mt-4 font-mono text-xs text-emerald-500/50">
+              <span className="mt-4 font-mono text-xs text-emerald-400">
                 STEP {step.num}
               </span>
               <h3 className="mt-2 text-lg font-semibold">{step.title}</h3>
-              <p className="mt-2 max-w-xs text-sm text-white/50">{step.desc}</p>
+              <p className="mt-2 max-w-xs text-sm text-gray-500">{step.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* ── Trust Section ── */}
-      <section className="border-y border-white/5 bg-white/[0.01] px-4 py-24">
+      <section className="border-y border-gray-200 bg-gray-50 px-4 py-24">
         <div className="mx-auto max-w-5xl">
           <div className="text-center">
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
               Why PumpFundMe?
             </h2>
-            <p className="mt-3 text-white/40">
+            <p className="mt-3 text-gray-500">
               Built for trust. Designed for impact.
             </p>
           </div>
@@ -235,11 +235,11 @@ export default function LandingPage() {
                 key={card.title}
                 className="glass glass-hover group rounded-2xl p-8 transition-all duration-300"
               >
-                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 transition-colors group-hover:bg-emerald-500/20">
+                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 transition-colors group-hover:bg-emerald-100">
                   {card.icon}
                 </div>
                 <h3 className="text-lg font-semibold">{card.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-white/45">
+                <p className="mt-2 text-sm leading-relaxed text-gray-500">
                   {card.desc}
                 </p>
               </div>
@@ -254,7 +254,7 @@ export default function LandingPage() {
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
             Frequently Asked Questions
           </h2>
-          <p className="mt-3 text-white/40">
+          <p className="mt-3 text-gray-500">
             Everything you need to know about PumpFundMe.
           </p>
         </div>
@@ -263,12 +263,12 @@ export default function LandingPage() {
           {faqs.map((faq) => (
             <details
               key={faq.q}
-              className="group glass rounded-xl transition-all duration-200 hover:border-emerald-500/20"
+              className="group glass rounded-xl transition-all duration-200 hover:border-emerald-300"
             >
               <summary className="flex cursor-pointer items-center justify-between p-5">
                 <span className="text-sm font-medium pr-4">{faq.q}</span>
                 <svg
-                  className="faq-chevron h-4 w-4 shrink-0 text-white/30 transition-transform duration-200"
+                  className="faq-chevron h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -277,7 +277,7 @@ export default function LandingPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                 </svg>
               </summary>
-              <div className="px-5 pb-5 text-sm leading-relaxed text-white/50">
+              <div className="px-5 pb-5 text-sm leading-relaxed text-gray-500">
                 {faq.a}
               </div>
             </details>
@@ -286,19 +286,19 @@ export default function LandingPage() {
       </section>
 
       {/* ── CTA ── */}
-      <section className="relative overflow-hidden border-t border-white/5 px-4 py-24 text-center">
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-emerald-950/20 to-transparent" />
+      <section className="relative overflow-hidden border-t border-gray-200 px-4 py-24 text-center">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-emerald-50 to-transparent" />
         <div className="relative z-10">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
             Ready to make a difference?
           </h2>
-          <p className="mx-auto mt-4 max-w-md text-white/45">
+          <p className="mx-auto mt-4 max-w-md text-gray-500">
             Every memecoin can be a force for good. Start your campaign today
             and turn trades into donations.
           </p>
           <Link
             href="/dashboard"
-            className="mt-8 inline-flex h-12 items-center rounded-xl bg-emerald-500 px-8 text-sm font-semibold text-black transition-all hover:bg-emerald-400 hover:scale-105 active:scale-95"
+            className="mt-8 inline-flex h-12 items-center rounded-xl bg-emerald-500 px-8 text-sm font-semibold text-white transition-all hover:bg-emerald-400 hover:scale-105 active:scale-95"
           >
             Get Started
           </Link>

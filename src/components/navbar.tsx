@@ -17,7 +17,7 @@ export function Navbar() {
   const isActive = (href: string) => pathname === href;
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-white/5 bg-black/50 backdrop-blur-xl">
+    <nav className="sticky top-0 z-50 border-b border-gray-200 bg-white/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5">
@@ -28,8 +28,8 @@ export function Navbar() {
             height={32}
             className="rounded-lg"
           />
-          <span className="text-lg font-bold tracking-tight">
-            Pump<span className="text-emerald-400">Fund</span>Me
+          <span className="text-lg font-bold tracking-tight text-gray-900">
+            Pump<span className="text-emerald-500">Fund</span>Me
           </span>
         </Link>
 
@@ -41,13 +41,13 @@ export function Navbar() {
               href={link.href}
               className={`relative text-sm transition-colors ${
                 isActive(link.href)
-                  ? "text-emerald-400"
-                  : "text-white/60 hover:text-white"
+                  ? "text-emerald-600"
+                  : "text-gray-500 hover:text-gray-900"
               }`}
             >
               {link.label}
               {isActive(link.href) && (
-                <span className="absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-emerald-400" />
+                <span className="absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-emerald-500" />
               )}
             </Link>
           ))}
@@ -56,7 +56,7 @@ export function Navbar() {
         {/* Mobile hamburger */}
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/5 hover:text-white md:hidden"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 md:hidden"
           aria-label="Toggle menu"
         >
           {mobileOpen ? (
@@ -73,7 +73,7 @@ export function Navbar() {
 
       {/* Mobile dropdown */}
       {mobileOpen && (
-        <div className="border-t border-white/5 bg-black/90 backdrop-blur-xl md:hidden">
+        <div className="border-t border-gray-200 bg-white/95 backdrop-blur-xl md:hidden">
           <div className="flex flex-col gap-1 px-4 py-3">
             {links.map((link) => (
               <Link
@@ -82,8 +82,8 @@ export function Navbar() {
                 onClick={() => setMobileOpen(false)}
                 className={`rounded-lg px-3 py-2.5 text-sm transition-colors ${
                   isActive(link.href)
-                    ? "bg-emerald-500/10 text-emerald-400"
-                    : "text-white/60 hover:bg-white/5 hover:text-white"
+                    ? "bg-emerald-50 text-emerald-600"
+                    : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
                 }`}
               >
                 {link.label}
