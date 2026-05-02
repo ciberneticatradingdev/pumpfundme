@@ -106,10 +106,22 @@ export default function LandingPage() {
         <div className="pointer-events-none absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/20 to-transparent" />
 
         <div className="relative z-10 animate-fade-in-up">
-          {/* Title with logo above the U */}
+          {/* Logo */}
+          <div className="mx-auto mb-8 animate-float">
+            <Image
+              src="/logo.svg"
+              alt="PumpFundMe Logo"
+              width={80}
+              height={80}
+              className="animate-pulse-glow"
+              priority
+            />
+          </div>
+
+          {/* Title */}
           <h1 className="text-6xl font-extrabold tracking-tight sm:text-7xl lg:text-8xl">
             <span className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-500 bg-clip-text text-transparent animate-gradient">
-              Pump<span className="relative inline-block"><span className="absolute -top-[60px] left-1/2 -translate-x-1/2 sm:-top-[70px] lg:-top-[85px] animate-float"><Image src="/logo.svg" alt="PumpFundMe Logo" width={64} height={64} className="animate-pulse-glow sm:w-[72px] sm:h-[72px] lg:w-[88px] lg:h-[88px]" priority /></span>F</span>undMe
+              PumpFundMe
             </span>
           </h1>
 
