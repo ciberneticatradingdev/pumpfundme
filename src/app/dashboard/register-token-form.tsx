@@ -40,8 +40,6 @@ export function RegisterTokenForm({ campaignId, walletAddress, onSuccess, onCanc
     }
   };
 
-  const truncated = `${walletAddress.slice(0, 4)}…${walletAddress.slice(-4)}`;
-
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
@@ -56,6 +54,17 @@ export function RegisterTokenForm({ campaignId, walletAddress, onSuccess, onCanc
           className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 font-mono text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/25"
         />
       </div>
+
+      <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+        <p className="text-xs text-gray-500">Registering as deployer:</p>
+        <p className="mt-0.5 font-mono text-sm text-gray-700">
+          {walletAddress.slice(0, 6)}…{walletAddress.slice(-6)}
+        </p>
+      </div>
+
+      <p className="text-xs text-gray-400">
+        Your connected wallet must be the token&apos;s deployer. This is verified on-chain.
+      </p>
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
@@ -72,7 +81,7 @@ export function RegisterTokenForm({ campaignId, walletAddress, onSuccess, onCanc
           {loading ? (
             <span className="flex items-center gap-2">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-              Registering…
+              Verifying…
             </span>
           ) : (
             "Register Token"
@@ -86,11 +95,6 @@ export function RegisterTokenForm({ campaignId, walletAddress, onSuccess, onCanc
           Cancel
         </button>
       </div>
-
-      <p className="text-xs text-gray-400">
-        Registering as:{" "}
-        <span className="font-mono text-gray-600">{truncated}</span>
-      </p>
     </form>
   );
 }
