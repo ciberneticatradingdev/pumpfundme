@@ -5,6 +5,13 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!prisma) {
+    return NextResponse.json(
+      { error: "Database not configured" },
+      { status: 503 }
+    );
+  }
+
   try {
     const { id } = await params;
     const campaign = await prisma.campaign.findUnique({

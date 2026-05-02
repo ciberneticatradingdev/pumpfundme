@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
+  if (!prisma) {
+    return NextResponse.json([], { status: 200 });
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const campaignId = searchParams.get("campaignId");

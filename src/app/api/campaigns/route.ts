@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { eventBus } from "@/lib/events";
 
 export async function GET() {
+  if (!prisma) {
+    return NextResponse.json([], { status: 200 });
+  }
+
   try {
     const campaigns = await prisma.campaign.findMany({
       orderBy: { createdAt: "desc" },
@@ -21,6 +25,13 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!prisma) {
+    return NextResponse.json(
+      { error: "Database not configured" },
+      { status: 503 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { name, description, goFundMeUrl } = body;

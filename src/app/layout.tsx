@@ -17,7 +17,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "PumpFundMe — Memecoins for Good",
   description:
-    "Launch memecoins on pump.fun and automatically donate 100% of fees to charity. Zero commission.",
+    "Launch memecoins on pump.fun and automatically donate 100% of fees to charity. Zero commission. Fully transparent.",
+  openGraph: {
+    title: "PumpFundMe — Memecoins for Good",
+    description:
+      "Launch memecoins on pump.fun and automatically donate 100% of fees to charity.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
@@ -30,7 +36,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col bg-black">
         <Navbar />
         <main className="flex-1">{children}</main>
         <Footer />

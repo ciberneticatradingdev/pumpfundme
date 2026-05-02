@@ -2,16 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { CreateCampaignForm } from "./create-campaign-form";
 import { RegisterTokenForm } from "./register-token-form";
 
@@ -25,6 +15,12 @@ interface Campaign {
   totalDonatedUsd: number;
   _count?: { tokens: number };
 }
+
+const statusStyles: Record<string, string> = {
+  ACTIVE: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
+  PAUSED: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25",
+  COMPLETED: "bg-blue-500/15 text-blue-400 border-blue-500/25",
+};
 
 export function CampaignList() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -48,149 +44,148 @@ export function CampaignList() {
     fetchCampaigns();
   }, []);
 
-  const statusColor = (status: string) => {
-    switch (status) {
-      case "ACTIVE":
-        return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
-      case "PAUSED":
-        return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
-      case "COMPLETED":
-        return "bg-blue-500/20 text-blue-400 border-blue-500/30";
-      default:
-        return "";
-    }
-  };
-
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-muted-foreground">
-        Loading campaigns…
+      <div className="flex flex-col items-center justify-center py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500/20 border-t-emerald-500" />
+        <p className="mt-4 text-sm text-white/30">Loading campaigns…</p>
       </div>
     );
   }
 
   return (
-    <div>
+    <div className="animate-fade-in-up">
+      {/* Header bar */}
       <div className="mb-6 flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-white/40">
           {campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""}
         </p>
-        <Button
+        <button
           onClick={() => setShowCreate(!showCreate)}
-          className="bg-emerald-500 text-black hover:bg-emerald-400 font-semibold"
+          className="inline-flex h-9 items-center rounded-lg bg-emerald-500 px-4 text-sm font-semibold text-black transition-all hover:bg-emerald-400 active:scale-95"
         >
-          {showCreate ? "Cancel" : "Create Campaign"}
-        </Button>
+          {showCreate ? "Cancel" : "+ New Campaign"}
+        </button>
       </div>
 
+      {/* Create form */}
       {showCreate && (
-        <Card className="mb-6 border-emerald-500/30 bg-card/80">
-          <CardHeader>
-            <CardTitle>New Campaign</CardTitle>
-            <CardDescription>
-              Link a GoFundMe page and start receiving donations.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CreateCampaignForm
-              onSuccess={() => {
-                setShowCreate(false);
-                fetchCampaigns();
-              }}
-            />
-          </CardContent>
-        </Card>
+        <div className="glass mb-6 rounded-xl border-emerald-500/20 p-6">
+          <h3 className="mb-1 text-lg font-semibold">New Campaign</h3>
+          <p className="mb-5 text-sm text-white/40">
+            Link a GoFundMe page and start receiving donations.
+          </p>
+          <CreateCampaignForm
+            onSuccess={() => {
+              setShowCreate(false);
+              fetchCampaigns();
+            }}
+          />
+        </div>
       )}
 
+      {/* Register token form */}
       {registerTokenFor && (
-        <Card className="mb-6 border-emerald-500/30 bg-card/80">
-          <CardHeader>
-            <CardTitle>Register Token</CardTitle>
-            <CardDescription>
-              Link a pump.fun token to this campaign.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RegisterTokenForm
-              campaignId={registerTokenFor}
-              onSuccess={() => {
-                setRegisterTokenFor(null);
-                fetchCampaigns();
-              }}
-              onCancel={() => setRegisterTokenFor(null)}
-            />
-          </CardContent>
-        </Card>
+        <div className="glass mb-6 rounded-xl border-emerald-500/20 p-6">
+          <h3 className="mb-1 text-lg font-semibold">Register Token</h3>
+          <p className="mb-5 text-sm text-white/40">
+            Link a pump.fun token to this campaign.
+          </p>
+          <RegisterTokenForm
+            campaignId={registerTokenFor}
+            onSuccess={() => {
+              setRegisterTokenFor(null);
+              fetchCampaigns();
+            }}
+            onCancel={() => setRegisterTokenFor(null)}
+          />
+        </div>
       )}
 
+      {/* Empty state */}
       {campaigns.length === 0 ? (
-        <Card className="border-dashed border-border/50 bg-card/30">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <p className="text-4xl mb-4">📋</p>
-            <p className="text-muted-foreground">No campaigns yet.</p>
-            <p className="text-sm text-muted-foreground/60 mt-1">
-              Create one to get started.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="glass rounded-2xl border-dashed p-16 text-center">
+          <div className="mx-auto mb-6 text-white/10 font-mono text-sm leading-relaxed whitespace-pre">
+{`    ╔══════════════════╗
+    ║   No campaigns   ║
+    ║      yet         ║
+    ╚══════════════════╝`}
+          </div>
+          <p className="text-white/40">Create your first campaign to get started.</p>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="mt-4 inline-flex h-9 items-center rounded-lg bg-emerald-500 px-4 text-sm font-semibold text-black transition-all hover:bg-emerald-400 active:scale-95"
+          >
+            Create Campaign
+          </button>
+        </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {campaigns.map((c) => (
-            <Card
+            <div
               key={c.id}
-              className="group border-border/50 bg-card/50 transition-all hover:border-emerald-500/30"
+              className="glass glass-hover group rounded-xl p-5 transition-all duration-200 hover:scale-[1.02]"
             >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <Link href={`/campaign/${c.id}`}>
-                    <CardTitle className="text-lg hover:text-emerald-400 transition-colors cursor-pointer">
-                      {c.name}
-                    </CardTitle>
-                  </Link>
-                  <Badge variant="outline" className={statusColor(c.status)}>
-                    {c.status}
-                  </Badge>
+              {/* Header */}
+              <div className="mb-3 flex items-start justify-between">
+                <Link href={`/campaign/${c.id}`}>
+                  <h3 className="text-lg font-semibold transition-colors hover:text-emerald-400">
+                    {c.name}
+                  </h3>
+                </Link>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                    statusStyles[c.status] || ""
+                  }`}
+                >
+                  {c.status}
+                </span>
+              </div>
+
+              {c.description && (
+                <p className="mb-4 line-clamp-2 text-sm text-white/40">
+                  {c.description}
+                </p>
+              )}
+
+              {/* Stats */}
+              <div className="mb-4 grid grid-cols-2 gap-3">
+                <div className="rounded-lg bg-white/[0.03] px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wider text-white/30">
+                    SOL Received
+                  </p>
+                  <p className="mt-0.5 font-mono text-sm font-semibold text-emerald-400">
+                    {c.totalSolReceived.toFixed(4)}
+                  </p>
                 </div>
-                {c.description && (
-                  <CardDescription className="line-clamp-2">
-                    {c.description}
-                  </CardDescription>
-                )}
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-muted-foreground text-xs">SOL Received</p>
-                    <p className="font-mono font-semibold text-emerald-400">
-                      {c.totalSolReceived.toFixed(4)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">USD Donated</p>
-                    <p className="font-mono font-semibold">
-                      ${c.totalDonatedUsd.toFixed(2)}
-                    </p>
-                  </div>
+                <div className="rounded-lg bg-white/[0.03] px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wider text-white/30">
+                    USD Donated
+                  </p>
+                  <p className="mt-0.5 font-mono text-sm font-semibold">
+                    ${c.totalDonatedUsd.toFixed(2)}
+                  </p>
                 </div>
-                <div className="mt-4 flex items-center gap-2">
-                  <a
-                    href={c.goFundMeUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-                  >
-                    GoFundMe ↗
-                  </a>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setRegisterTokenFor(c.id)}
-                  >
-                    + Token
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2">
+                <a
+                  href={c.goFundMeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-white/5 px-3 text-xs text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  GoFundMe ↗
+                </a>
+                <button
+                  onClick={() => setRegisterTokenFor(c.id)}
+                  className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-white/5 px-3 text-xs text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  + Token
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       )}

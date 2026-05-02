@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 interface Props {
   campaignId: string;
@@ -45,41 +43,58 @@ export function RegisterTokenForm({ campaignId, onSuccess, onCancel }: Props) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="mb-1 block text-sm font-medium">
+        <label className="mb-1.5 block text-sm font-medium text-white/70">
           Token Mint Address
         </label>
-        <Input
+        <input
           value={mintAddress}
           onChange={(e) => setMintAddress(e.target.value)}
           placeholder="Token mint address (base58)"
-          className="font-mono text-sm"
           required
+          className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 font-mono text-sm text-white placeholder:text-white/25 transition-colors focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/25"
         />
       </div>
       <div>
-        <label className="mb-1 block text-sm font-medium">
+        <label className="mb-1.5 block text-sm font-medium text-white/70">
           Deployer Wallet
         </label>
-        <Input
+        <input
           value={deployerWallet}
           onChange={(e) => setDeployerWallet(e.target.value)}
           placeholder="Wallet that deployed the token"
-          className="font-mono text-sm"
           required
+          className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 font-mono text-sm text-white placeholder:text-white/25 transition-colors focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/25"
         />
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {error && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          {error}
+        </div>
+      )}
+
       <div className="flex gap-2">
-        <Button
+        <button
           type="submit"
           disabled={loading}
-          className="bg-emerald-500 text-black hover:bg-emerald-400 font-semibold"
+          className="inline-flex h-10 items-center rounded-lg bg-emerald-500 px-5 text-sm font-semibold text-black transition-all hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
         >
-          {loading ? "Registering…" : "Register Token"}
-        </Button>
-        <Button type="button" variant="outline" onClick={onCancel}>
+          {loading ? (
+            <span className="flex items-center gap-2">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/20 border-t-black" />
+              Registering…
+            </span>
+          ) : (
+            "Register Token"
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="inline-flex h-10 items-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+        >
           Cancel
-        </Button>
+        </button>
       </div>
     </form>
   );
