@@ -4,13 +4,13 @@ import { useState } from "react";
 
 interface Props {
   campaignId: string;
+  walletAddress: string;
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-export function RegisterTokenForm({ campaignId, onSuccess, onCancel }: Props) {
+export function RegisterTokenForm({ campaignId, walletAddress, onSuccess, onCancel }: Props) {
   const [mintAddress, setMintAddress] = useState("");
-  const [deployerWallet, setDeployerWallet] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -23,7 +23,7 @@ export function RegisterTokenForm({ campaignId, onSuccess, onCancel }: Props) {
       const res = await fetch(`/api/campaigns/${campaignId}/tokens`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mintAddress, deployerWallet }),
+        body: JSON.stringify({ mintAddress, deployerWallet: walletAddress }),
       });
 
       if (!res.ok) {
@@ -40,28 +40,18 @@ export function RegisterTokenForm({ campaignId, onSuccess, onCancel }: Props) {
     }
   };
 
+  const truncated = `${walletAddress.slice(0, 4)}…${walletAddress.slice(-4)}`;
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label className="mb-1.5 block text-sm font-medium text-gray-700">
-          Token Mint Address
+          Token Contract Address
         </label>
         <input
           value={mintAddress}
           onChange={(e) => setMintAddress(e.target.value)}
           placeholder="Token mint address (base58)"
-          required
-          className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 font-mono text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/25"
-        />
-      </div>
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700">
-          Deployer Wallet
-        </label>
-        <input
-          value={deployerWallet}
-          onChange={(e) => setDeployerWallet(e.target.value)}
-          placeholder="Wallet that deployed the token"
           required
           className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 font-mono text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/25"
         />
@@ -96,6 +86,11 @@ export function RegisterTokenForm({ campaignId, onSuccess, onCancel }: Props) {
           Cancel
         </button>
       </div>
+
+      <p className="text-xs text-gray-400">
+        Registering as:{" "}
+        <span className="font-mono text-gray-600">{truncated}</span>
+      </p>
     </form>
   );
 }

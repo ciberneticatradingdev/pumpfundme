@@ -100,6 +100,7 @@ export function CampaignList({ walletAddress }: Props) {
           </p>
           <RegisterTokenForm
             campaignId={registerTokenFor}
+            walletAddress={walletAddress}
             onSuccess={() => {
               setRegisterTokenFor(null);
               fetchCampaigns();
