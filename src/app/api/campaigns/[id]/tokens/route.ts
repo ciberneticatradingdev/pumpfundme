@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { eventBus } from "@/lib/events";
 import { verifyTokenDeployer } from "@/lib/verify-deployer";
+import { verifyFeeRecipient } from "@/lib/verify-fee-recipient";
 
 export async function POST(
   request: NextRequest,
@@ -69,6 +70,15 @@ export async function POST(
     if (!verification.verified) {
       return NextResponse.json(
         { error: verification.error || "You are not the deployer of this token" },
+        { status: 403 }
+      );
+    }
+
+    // Verify that the token's fees are directed to PumpFundMe
+    const feeCheck = await verifyFeeRecipient(mintAddress);
+    if (!feeCheck.verified) {
+      return NextResponse.json(
+        { error: feeCheck.error || "Token fees are not directed to PumpFundMe" },
         { status: 403 }
       );
     }
