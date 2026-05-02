@@ -114,7 +114,7 @@ export default function LandingPage() {
               width={80}
               height={80}
               priority
-              className="h-16 w-16 sm:h-20 sm:w-20 lg:h-24 lg:w-24"
+              className="h-20 w-20 sm:h-28 sm:w-28 lg:h-36 lg:w-36"
             />
             <span className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-500 bg-clip-text text-transparent animate-gradient">
               PumpFundMe
