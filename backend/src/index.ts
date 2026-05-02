@@ -1,8 +1,9 @@
 import { db } from './db';
 import { startMonitor } from './fee-monitor';
+import { startClaimer } from './fee-claimer';
 
 async function main(): Promise<void> {
-  console.log('[index] PumpFundMe fee monitor starting...');
+  console.log('[index] PumpFundMe backend starting...');
 
   process.on('unhandledRejection', (reason) => {
     console.error('[index] unhandled rejection:', reason);
@@ -20,7 +21,14 @@ async function main(): Promise<void> {
     process.exit(0);
   });
 
-  await startMonitor();
+  // Start both services in parallel
+  await Promise.all([
+    startMonitor(),
+    startClaimer(),
+  ]);
+
+  // Keep process alive
+  console.log('[index] all services running');
 }
 
 main().catch((err) => {

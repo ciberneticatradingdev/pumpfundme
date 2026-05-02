@@ -6,13 +6,13 @@ import {
 } from '@solana/web3.js';
 import { config } from './config';
 import { db } from './db';
-import { parseSharingConfig, sleep, withRetry } from './utils';
+import { sleep, withRetry } from './utils';
+import { refreshCache, findMintFromTxAccounts, needsRefresh } from './sharing-config-cache';
 
 const connection = new Connection(config.solanaRpcUrl, 'confirmed');
 const feeWalletPubkey = new PublicKey(config.feeWallet);
-const pumpFeesProgramPubkey = new PublicKey(config.pumpFeesProgramId);
+const pumpFeesProgramId = config.pumpFeesProgramId;
 
-// In-memory cursor; bootstrapped from DB on startup so restarts don't reprocess
 let lastSignature: string | null = null;
 
 async function initLastSignature(): Promise<void> {
@@ -25,27 +25,8 @@ async function initLastSignature(): Promise<void> {
   if (lastSignature) {
     console.log(`[monitor] resuming after signature: ${lastSignature}`);
   } else {
-    console.log('[monitor] no prior FEE_RECEIVED transactions found — starting from latest');
+    console.log('[monitor] no prior FEE_RECEIVED transactions — starting from latest');
   }
-}
-
-async function getMintForTx(txSignature: string): Promise<string | null> {
-  const tx = await withRetry(() =>
-    connection.getParsedTransaction(txSignature, {
-      maxSupportedTransactionVersion: 0,
-      commitment: 'confirmed',
-    }),
-  );
-  if (!tx) return null;
-
-  for (const acc of tx.transaction.message.accountKeys) {
-    const info = await withRetry(() => connection.getAccountInfo(acc.pubkey));
-    if (!info) continue;
-    if (!info.owner.equals(pumpFeesProgramPubkey)) continue;
-    const parsed = parseSharingConfig(info.data);
-    if (parsed) return parsed.mint;
-  }
-  return null;
 }
 
 async function processSignature(sig: ConfirmedSignatureInfo): Promise<void> {
@@ -54,11 +35,10 @@ async function processSignature(sig: ConfirmedSignatureInfo): Promise<void> {
   // Idempotency guard
   const existing = await db.transaction.findUnique({ where: { txSignature: txSig } });
   if (existing) {
-    console.log(`[monitor] already processed: ${txSig}`);
+    console.log(`[monitor] already processed: ${txSig.slice(0, 20)}...`);
     return;
   }
 
-  // Fetch the full transaction to read balances
   const parsedTx = await withRetry(() =>
     connection.getParsedTransaction(txSig, {
       maxSupportedTransactionVersion: 0,
@@ -67,7 +47,7 @@ async function processSignature(sig: ConfirmedSignatureInfo): Promise<void> {
   );
 
   if (!parsedTx?.meta) {
-    console.warn(`[monitor] no meta for tx ${txSig}, skipping`);
+    console.warn(`[monitor] no meta for tx ${txSig.slice(0, 20)}..., skipping`);
     return;
   }
 
@@ -75,7 +55,7 @@ async function processSignature(sig: ConfirmedSignatureInfo): Promise<void> {
   const accounts = parsedTx.transaction.message.accountKeys;
   const walletIndex = accounts.findIndex(a => a.pubkey.toBase58() === config.feeWallet);
   if (walletIndex === -1) {
-    console.warn(`[monitor] fee wallet not found in tx ${txSig}, skipping`);
+    console.warn(`[monitor] fee wallet not in tx ${txSig.slice(0, 20)}..., skipping`);
     return;
   }
 
@@ -84,25 +64,38 @@ async function processSignature(sig: ConfirmedSignatureInfo): Promise<void> {
   const solReceived = (post - pre) / LAMPORTS_PER_SOL;
 
   if (solReceived <= 0) {
-    console.log(`[monitor] tx ${txSig} not a SOL receive (Δ${solReceived.toFixed(6)} SOL), skipping`);
+    console.log(`[monitor] tx ${txSig.slice(0, 20)}... not a receive (Δ${solReceived.toFixed(6)}), skipping`);
     return;
   }
 
-  // Find the SharingConfig among the transaction accounts to get the token mint
-  let mintAddress: string | null = null;
-  for (const acc of accounts) {
-    const info = await withRetry(() => connection.getAccountInfo(acc.pubkey));
-    if (!info) continue;
-    if (!info.owner.equals(pumpFeesProgramPubkey)) continue;
-    const parsed = parseSharingConfig(info.data);
-    if (parsed) {
-      mintAddress = parsed.mint;
-      break;
-    }
+  // Check if this tx involves PumpFees program
+  const isPumpFeesTx = accounts.some(a => a.pubkey.toBase58() === pumpFeesProgramId);
+  if (!isPumpFeesTx) {
+    console.log(`[monitor] tx ${txSig.slice(0, 20)}... received ${solReceived.toFixed(6)} SOL but not from PumpFees, skipping`);
+    return;
+  }
+
+  // Find the mint by matching tx accounts against our SharingConfig cache
+  const accountKeys = accounts.map(a => a.pubkey.toBase58());
+  let mintAddress = findMintFromTxAccounts(accountKeys);
+
+  if (!mintAddress) {
+    // If cache miss, try refreshing and matching again
+    console.log(`[monitor] cache miss for tx ${txSig.slice(0, 20)}..., refreshing cache...`);
+    await refreshCache();
+    mintAddress = findMintFromTxAccounts(accountKeys);
   }
 
   if (!mintAddress) {
-    console.warn(`[monitor] could not find SharingConfig in tx ${txSig} — no PumpFees account found`);
+    console.warn(`[monitor] could not determine mint for claim tx ${txSig.slice(0, 20)}... — no matching SharingConfig`);
+    // Still record as unmatched for visibility
+    await db.event.create({
+      data: {
+        type: 'fee_received',
+        message: `Received ${solReceived.toFixed(6)} SOL from PumpFees but could not match to a campaign`,
+        data: { txSignature: txSig, amountSol: solReceived, accountKeys },
+      },
+    });
     return;
   }
 
@@ -113,13 +106,13 @@ async function processSignature(sig: ConfirmedSignatureInfo): Promise<void> {
   });
 
   if (!token) {
-    console.log(`[monitor] mint ${mintAddress} not in DB (no campaign configured) — skipping`);
+    console.log(`[monitor] mint ${mintAddress.slice(0, 10)}... not registered to any campaign — skipping`);
     return;
   }
 
   const blockTime = sig.blockTime ? new Date(sig.blockTime * 1000) : new Date();
 
-  // Record Transaction + Event + increment campaign total — all atomically
+  // Record Transaction + Event + update campaign total — atomically
   await db.$transaction(async (ctx) => {
     const recorded = await ctx.transaction.create({
       data: {
@@ -139,13 +132,14 @@ async function processSignature(sig: ConfirmedSignatureInfo): Promise<void> {
 
     await ctx.event.create({
       data: {
-        type: 'FEE_RECEIVED',
+        type: 'fee_received',
         campaignId: token.campaignId,
         message: `Received ${solReceived.toFixed(6)} SOL from pump.fun fees for "${token.campaign.name}"`,
         data: {
           txSignature: txSig,
           amountSol: solReceived,
           mintAddress,
+          tokenSymbol: token.symbol,
           transactionId: recorded.id,
         },
       },
@@ -158,15 +152,17 @@ async function processSignature(sig: ConfirmedSignatureInfo): Promise<void> {
   });
 
   console.log(
-    `[monitor] recorded ${solReceived.toFixed(6)} SOL → campaign "${token.campaign.name}" (tx: ${txSig})`,
+    `[monitor] ✅ ${solReceived.toFixed(6)} SOL → "${token.campaign.name}" (${token.symbol || mintAddress.slice(0, 10)}) tx: ${txSig.slice(0, 20)}...`,
   );
 }
 
 async function poll(): Promise<void> {
-  console.log('[monitor] polling for new transactions...');
-
   try {
-    // Signatures are returned newest-first; `until` excludes the cursor signature itself
+    // Refresh cache if stale
+    if (needsRefresh()) {
+      await refreshCache();
+    }
+
     const signatures = await withRetry(() =>
       connection.getSignaturesForAddress(feeWalletPubkey, {
         until: lastSignature ?? undefined,
@@ -174,46 +170,40 @@ async function poll(): Promise<void> {
       }),
     );
 
-    if (signatures.length === 0) {
-      console.log('[monitor] no new transactions');
-      return;
-    }
+    if (signatures.length === 0) return;
 
-    console.log(`[monitor] ${signatures.length} new signature(s) to process`);
+    console.log(`[monitor] ${signatures.length} new signature(s)`);
 
-    // Process oldest-first so lastSignature advances monotonically even on partial failures
+    // Process oldest-first
     const ordered = [...signatures].reverse();
     for (const sig of ordered) {
       try {
         await processSignature(sig);
       } catch (err) {
-        console.error(`[monitor] error processing ${sig.signature}:`, err);
+        console.error(`[monitor] error processing ${sig.signature.slice(0, 20)}...:`, err);
       }
     }
 
-    // Advance cursor to the newest signature we fetched
+    // Advance cursor to newest
     lastSignature = signatures[0].signature;
-    console.log(`[monitor] cursor advanced to: ${lastSignature}`);
   } catch (err) {
     console.error('[monitor] poll error:', err);
   }
 }
 
 export async function startMonitor(): Promise<void> {
+  console.log(`[monitor] fee wallet: ${config.feeWallet}`);
+  console.log(`[monitor] poll interval: ${config.pollIntervalMs}ms`);
+
+  // Init cache + cursor
+  await refreshCache();
   await initLastSignature();
 
-  console.log(`[monitor] watching fee wallet: ${config.feeWallet}`);
-  console.log(`[monitor] PumpFees program:    ${config.pumpFeesProgramId}`);
-  console.log(`[monitor] poll interval:        ${config.pollIntervalMs}ms`);
-
-  // First poll immediately, then on interval
+  // First poll immediately
   await poll();
 
-  const interval = setInterval(() => {
-    poll().catch(err => console.error('[monitor] unhandled poll error:', err));
+  // Then on interval
+  setInterval(() => {
+    poll().catch(err => console.error('[monitor] unhandled:', err));
   }, config.pollIntervalMs);
-
-  // Keep the process alive
-  interval.unref();
-  await sleep(Number.MAX_SAFE_INTEGER);
 }
