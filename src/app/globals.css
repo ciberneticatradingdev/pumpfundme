@@ -55,6 +55,7 @@
 
 /* Light theme — PumpFundMe */
 :root {
+  --font-sans: 'Futura', 'Century Gothic', 'Trebuchet MS', Arial, sans-serif;
   --background: #ffffff;
   --foreground: #0a0a0a;
   --card: #ffffff;
@@ -98,6 +99,10 @@
   }
   html {
     @apply font-sans;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Futura', 'Century Gothic', 'Trebuchet MS', Arial, sans-serif;
+    font-weight: 700;
   }
 }
 
