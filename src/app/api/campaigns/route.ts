@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
       where: wallet ? { creatorWallet: wallet } : undefined,
       orderBy: { createdAt: "desc" },
       include: {
+        tokens: true,
         _count: { select: { tokens: true } },
       },
     });

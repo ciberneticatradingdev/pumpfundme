@@ -5,6 +5,14 @@ import Link from "next/link";
 import { CreateCampaignForm } from "./create-campaign-form";
 import { RegisterTokenForm } from "./register-token-form";
 
+interface Token {
+  id: string;
+  mintAddress: string;
+  name: string | null;
+  symbol: string | null;
+  createdAt: string;
+}
+
 interface Campaign {
   id: string;
   name: string;
@@ -14,6 +22,7 @@ interface Campaign {
   totalSolReceived: number;
   totalDonatedUsd: number;
   creatorWallet: string | null;
+  tokens: Token[];
   _count?: { tokens: number };
 }
 
@@ -175,6 +184,36 @@ export function CampaignList({ walletAddress }: Props) {
                   </p>
                 </div>
               </div>
+
+              {/* Linked Tokens */}
+              {c.tokens.length > 0 && (
+                <div className="mb-4">
+                  <p className="mb-1.5 text-[10px] uppercase tracking-wider text-gray-400">
+                    Linked Tokens
+                  </p>
+                  <div className="space-y-1.5">
+                    {c.tokens.map((t) => (
+                      <div
+                        key={t.id}
+                        className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-1.5 border border-emerald-100"
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        <span className="font-mono text-xs text-gray-700">
+                          {t.mintAddress.slice(0, 6)}…{t.mintAddress.slice(-4)}
+                        </span>
+                        <a
+                          href={`https://pump.fun/coin/${t.mintAddress}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ml-auto text-[10px] text-emerald-600 hover:underline"
+                        >
+                          View ↗
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Actions */}
               <div className="flex items-center gap-2">
