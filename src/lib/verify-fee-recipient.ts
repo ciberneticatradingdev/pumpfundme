@@ -1,116 +1,150 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 
-const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+const RPC_URL =
+  process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
 
-// The GitHub-linked wallet that should receive all fees
-// Change this when switching from test to production GitHub
-const PUMPFUNDME_FEE_WALLET = process.env.PUMPFUNDME_FEE_WALLET || "vcKapasn5HfXpXvdxjBLqrR35rQLb1WrEKZrM3MZiKi";
+// Wallet(s) that must appear as shareholders in the token's SharingConfig.
+// Comma-separated list — if ANY of these wallets is a shareholder, the token is valid.
+// Change this when switching from test (ciberneticatradingdev) to production GitHub.
+const PUMPFUNDME_FEE_WALLETS = (
+  process.env.PUMPFUNDME_FEE_WALLETS ||
+  process.env.PUMPFUNDME_FEE_WALLET ||
+  "49GECbTo4z2FZx9s5XzYwxwQurALWGjsfR6wM5deKrVN"
+)
+  .split(",")
+  .map((w) => w.trim())
+  .filter(Boolean);
 
-// PumpSwap program ID
-const PUMPSWAP_PROGRAM = new PublicKey("pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA");
+// PumpFees program
+const PUMP_FEES_PROGRAM = new PublicKey(
+  "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ"
+);
 
-// Pool discriminator from the Codama-generated struct
-const POOL_DISCRIMINATOR = Buffer.from([241, 154, 109, 4, 17, 177, 109, 188]);
+// SharingConfig account discriminator
+const SHARING_CONFIG_DISC = Buffer.from([216, 74, 9, 0, 56, 140, 93, 75]);
 
 /**
- * Decode the coin_creator field from a PumpSwap pool account.
- * Pool struct layout (after 8-byte discriminator):
- *   pool_bump: u8 (1)
- *   index: u16 (2)
- *   creator: Pubkey (32)
- *   base_mint: Pubkey (32)
- *   quote_mint: Pubkey (32)
- *   lp_mint: Pubkey (32)
- *   pool_base_token_account: Pubkey (32)
- *   pool_quote_token_account: Pubkey (32)
- *   lp_supply: u64 (8)
- *   coin_creator: Pubkey (32) <-- this is the fee recipient
+ * SharingConfig account layout (after 8-byte discriminator):
+ *   bump:          u8   (1)
+ *   version:       u8   (1)
+ *   status:        u8   (1)
+ *   mint:          Pubkey (32)  ← offset 11
+ *   admin:         Pubkey (32)  ← offset 43
+ *   admin_revoked: bool  (1)
+ *   shareholders:  Vec<Shareholder> ← offset 76
+ *     count: u32 LE (4)
+ *     each:  address(32) + share_bps(u16=2) = 34 bytes
  */
-function decodeCoinCreator(data: Buffer): PublicKey | null {
-  if (data.length < 8 + 1 + 2 + 32 * 6 + 8 + 32) return null;
+
+interface Shareholder {
+  address: string;
+  shareBps: number;
+}
+
+function parseSharingConfig(data: Buffer): {
+  mint: string;
+  admin: string;
+  shareholders: Shareholder[];
+} | null {
+  if (data.length < 80) return null;
 
   // Verify discriminator
-  if (!data.subarray(0, 8).equals(POOL_DISCRIMINATOR)) return null;
+  if (!data.subarray(0, 8).equals(SHARING_CONFIG_DISC)) return null;
 
-  // coin_creator offset: 8 (disc) + 1 (bump) + 2 (index) + 32*6 (6 pubkeys) + 8 (lp_supply) = 211
-  const offset = 8 + 1 + 2 + 32 * 6 + 8;
-  return new PublicKey(data.subarray(offset, offset + 32));
-}
+  const mint = new PublicKey(data.subarray(11, 43)).toBase58();
+  const admin = new PublicKey(data.subarray(43, 75)).toBase58();
 
-/**
- * Find the PumpSwap pool for a given token mint.
- * The pool PDA is derived from [base_mint, quote_mint(SOL), index].
- * Since we don't know the index, we search pool accounts by the token mint.
- */
-async function findPoolForMint(
-  connection: Connection,
-  mintAddress: PublicKey
-): Promise<{ poolAddress: PublicKey; data: Buffer } | null> {
-  // Search for pool accounts owned by PumpSwap that contain this mint
-  const accounts = await connection.getProgramAccounts(PUMPSWAP_PROGRAM, {
-    filters: [
-      { dataSize: 211 + 32 + 1 + 1 }, // Expected pool account size: 245 bytes
-      { memcmp: { offset: 8 + 1 + 2 + 32, bytes: mintAddress.toBase58() } }, // base_mint at offset 43
-    ],
-  });
+  const shareholderCount = data.readUInt32LE(76);
+  const shareholders: Shareholder[] = [];
 
-  if (accounts.length === 0) {
-    // Try with mint as quote (unlikely for pump.fun tokens, but just in case)
-    const accounts2 = await connection.getProgramAccounts(PUMPSWAP_PROGRAM, {
-      filters: [
-        { dataSize: 211 + 32 + 1 + 1 },
-        { memcmp: { offset: 8 + 1 + 2 + 32 + 32, bytes: mintAddress.toBase58() } },
-      ],
-    });
-    if (accounts2.length === 0) return null;
-    return { poolAddress: accounts2[0].pubkey, data: accounts2[0].account.data as Buffer };
+  let offset = 80;
+  for (let i = 0; i < shareholderCount && offset + 34 <= data.length; i++) {
+    const address = new PublicKey(data.subarray(offset, offset + 32)).toBase58();
+    const shareBps = data.readUInt16LE(offset + 32);
+    shareholders.push({ address, shareBps });
+    offset += 34;
   }
 
-  return { poolAddress: accounts[0].pubkey, data: accounts[0].account.data as Buffer };
+  return { mint, admin, shareholders };
 }
 
 /**
- * Verify that a token's creator fees are directed to PumpFundMe's wallet.
- * This checks the `coin_creator` field in the PumpSwap pool for the token.
+ * Verify that a token's creator fees are directed to PumpFundMe.
+ *
+ * Checks the SharingConfig account in the PumpFees program for the token.
+ * The SharingConfig stores the shareholders (wallets) that receive creator fees.
+ * At least one of our configured wallets must be a shareholder.
  */
 export async function verifyFeeRecipient(
   mintAddress: string
-): Promise<{ verified: boolean; coinCreator?: string; error?: string }> {
+): Promise<{
+  verified: boolean;
+  shareholders?: Shareholder[];
+  error?: string;
+}> {
   try {
     const connection = new Connection(RPC_URL, "confirmed");
     const mintPubkey = new PublicKey(mintAddress);
 
-    // Find the PumpSwap pool for this token
-    const poolResult = await findPoolForMint(connection, mintPubkey);
+    // Find SharingConfig accounts for this mint
+    const accounts = await connection.getProgramAccounts(PUMP_FEES_PROGRAM, {
+      filters: [
+        {
+          memcmp: {
+            offset: 0,
+            bytes: SHARING_CONFIG_DISC.toString("base64"),
+            encoding: "base64",
+          },
+        },
+        {
+          memcmp: {
+            offset: 11,
+            bytes: mintPubkey.toBase58(),
+          },
+        },
+      ],
+    });
 
-    if (!poolResult) {
+    if (accounts.length === 0) {
       return {
         verified: false,
-        error: "No PumpSwap pool found for this token. Make sure it graduated from pump.fun.",
+        error:
+          "No fee sharing config found for this token. Make sure creator fees are redirected to PumpFundMe's GitHub before registering.",
       };
     }
 
-    // Decode the coin_creator (fee recipient)
-    const coinCreator = decodeCoinCreator(poolResult.data);
-
-    if (!coinCreator) {
+    // Parse the SharingConfig
+    const config = parseSharingConfig(accounts[0].account.data as Buffer);
+    if (!config) {
       return {
         verified: false,
-        error: "Could not decode pool data",
+        error: "Could not decode fee sharing config",
       };
     }
 
-    const coinCreatorAddr = coinCreator.toBase58();
-    const expectedWallet = PUMPFUNDME_FEE_WALLET;
+    // Check if any of our wallets is a shareholder
+    const ourWallets = new Set(PUMPFUNDME_FEE_WALLETS);
+    const match = config.shareholders.find((s) => ourWallets.has(s.address));
 
-    if (coinCreatorAddr === expectedWallet) {
-      return { verified: true, coinCreator: coinCreatorAddr };
+    if (match) {
+      return {
+        verified: true,
+        shareholders: config.shareholders,
+      };
     }
+
+    // Build error message showing who actually receives the fees
+    const recipientList = config.shareholders
+      .map(
+        (s) =>
+          `${s.address.slice(0, 6)}…${s.address.slice(-4)} (${s.shareBps / 100}%)`
+      )
+      .join(", ");
 
     return {
       verified: false,
-      coinCreator: coinCreatorAddr,
-      error: `Token fees are not directed to PumpFundMe. Fee recipient: ${coinCreatorAddr.slice(0, 6)}…${coinCreatorAddr.slice(-4)}`,
+      shareholders: config.shareholders,
+      error: `Token fees are not directed to PumpFundMe. Current recipient(s): ${recipientList}`,
     };
   } catch (err) {
     console.error("Fee recipient verification error:", err);
