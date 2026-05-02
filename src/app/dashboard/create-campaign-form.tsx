@@ -3,10 +3,11 @@
 import { useState } from "react";
 
 interface Props {
+  walletAddress: string;
   onSuccess: () => void;
 }
 
-export function CreateCampaignForm({ onSuccess }: Props) {
+export function CreateCampaignForm({ walletAddress, onSuccess }: Props) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [goFundMeUrl, setGoFundMeUrl] = useState("");
@@ -22,7 +23,12 @@ export function CreateCampaignForm({ onSuccess }: Props) {
       const res = await fetch("/api/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description, goFundMeUrl }),
+        body: JSON.stringify({
+          name,
+          description,
+          goFundMeUrl,
+          creatorWallet: walletAddress,
+        }),
       });
 
       if (!res.ok) {

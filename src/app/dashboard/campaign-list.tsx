@@ -13,6 +13,7 @@ interface Campaign {
   status: string;
   totalSolReceived: number;
   totalDonatedUsd: number;
+  creatorWallet: string | null;
   _count?: { tokens: number };
 }
 
@@ -22,7 +23,11 @@ const statusStyles: Record<string, string> = {
   COMPLETED: "bg-blue-50 text-blue-600 border-blue-200",
 };
 
-export function CampaignList() {
+interface Props {
+  walletAddress: string;
+}
+
+export function CampaignList({ walletAddress }: Props) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -30,7 +35,7 @@ export function CampaignList() {
 
   const fetchCampaigns = async () => {
     try {
-      const res = await fetch("/api/campaigns");
+      const res = await fetch(`/api/campaigns?wallet=${walletAddress}`);
       if (res.ok) {
         const data = await res.json();
         setCampaigns(data);
@@ -42,7 +47,8 @@ export function CampaignList() {
 
   useEffect(() => {
     fetchCampaigns();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAddress]);
 
   if (loading) {
     return (
@@ -76,6 +82,7 @@ export function CampaignList() {
             Link a GoFundMe page and start receiving donations.
           </p>
           <CreateCampaignForm
+            walletAddress={walletAddress}
             onSuccess={() => {
               setShowCreate(false);
               fetchCampaigns();

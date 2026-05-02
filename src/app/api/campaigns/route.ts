@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { eventBus } from "@/lib/events";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!prisma) {
     return NextResponse.json([], { status: 200 });
   }
 
   try {
+    const wallet = request.nextUrl.searchParams.get("wallet");
+
     const campaigns = await prisma.campaign.findMany({
+      where: wallet ? { creatorWallet: wallet } : undefined,
       orderBy: { createdAt: "desc" },
       include: {
         _count: { select: { tokens: true } },
@@ -34,7 +37,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, description, goFundMeUrl } = body;
+    const { name, description, goFundMeUrl, creatorWallet } = body;
 
     if (!name || !goFundMeUrl) {
       return NextResponse.json(
@@ -43,8 +46,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!creatorWallet) {
+      return NextResponse.json(
+        { error: "Wallet connection required" },
+        { status: 401 }
+      );
+    }
+
     const campaign = await prisma.campaign.create({
-      data: { name, description: description || null, goFundMeUrl },
+      data: {
+        name,
+        description: description || null,
+        goFundMeUrl,
+        creatorWallet,
+      },
     });
 
     // Log event
@@ -53,7 +68,10 @@ export async function POST(request: NextRequest) {
         type: "campaign_created",
         campaignId: campaign.id,
         message: `Campaign "${campaign.name}" created`,
-        data: { goFundMeUrl: campaign.goFundMeUrl },
+        data: {
+          goFundMeUrl: campaign.goFundMeUrl,
+          creatorWallet: campaign.creatorWallet,
+        },
       },
     });
 

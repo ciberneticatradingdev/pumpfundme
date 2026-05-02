@@ -8,16 +8,17 @@ datasource db {
 }
 
 model Campaign {
-  id             String        @id @default(cuid())
-  name           String
-  description    String?
-  goFundMeUrl    String
-  imageUrl       String?
-  status         CampaignStatus @default(ACTIVE)
+  id               String        @id @default(cuid())
+  name             String
+  description      String?
+  goFundMeUrl      String
+  imageUrl         String?
+  creatorWallet    String?
+  status           CampaignStatus @default(ACTIVE)
   totalSolReceived Float       @default(0)
   totalDonatedUsd  Float       @default(0)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   tokens         Token[]
   transactions   Transaction[]
