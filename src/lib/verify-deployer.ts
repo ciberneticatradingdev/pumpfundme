@@ -80,16 +80,16 @@ export async function verifyTokenDeployer(
     }
 
     // Check if the wallet was a signer in the deploy transaction
-    const accountKeys = tx.transaction.message.getAccountKeys();
-    const signers: string[] = [];
+    // Use staticAccountKeys to avoid ALT resolution issues with versioned txs
+    const message = tx.transaction.message;
+    const staticKeys = "staticAccountKeys" in message
+      ? (message.staticAccountKeys as PublicKey[])
+      : (message as unknown as { accountKeys: PublicKey[] }).accountKeys;
     
-    // In versioned transactions, the first N accounts are signers (N = numRequiredSignatures)
-    const numSigners = tx.transaction.message.header.numRequiredSignatures;
-    for (let i = 0; i < numSigners; i++) {
-      const key = accountKeys.get(i);
-      if (key) {
-        signers.push(key.toBase58());
-      }
+    const numSigners = message.header.numRequiredSignatures;
+    const signers: string[] = [];
+    for (let i = 0; i < numSigners && i < staticKeys.length; i++) {
+      signers.push(staticKeys[i].toBase58());
     }
 
     if (signers.includes(walletAddress)) {
