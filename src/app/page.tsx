@@ -106,19 +106,16 @@ export default function LandingPage() {
         <div className="pointer-events-none absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/20 to-transparent" />
 
         <div className="relative z-10 animate-fade-in-up">
-          {/* Logo */}
-          <div className="flex justify-center mb-8">
+          {/* Title with logo inline */}
+          <h1 className="flex items-center justify-center gap-4 text-6xl font-extrabold tracking-tight sm:text-7xl sm:gap-5 lg:text-8xl lg:gap-6">
             <Image
               src="/logo.svg"
               alt="PumpFundMe Logo"
               width={80}
               height={80}
               priority
+              className="h-16 w-16 sm:h-20 sm:w-20 lg:h-24 lg:w-24"
             />
-          </div>
-
-          {/* Title */}
-          <h1 className="text-6xl font-extrabold tracking-tight sm:text-7xl lg:text-8xl">
             <span className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-500 bg-clip-text text-transparent animate-gradient">
               PumpFundMe
             </span>
