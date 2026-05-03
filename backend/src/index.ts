@@ -2,6 +2,7 @@ import http from 'http';
 import { db } from './db';
 import { startMonitor } from './fee-monitor';
 import { startClaimer, claimSingleToken, claimAllTokens, getVaultBalances } from './fee-claimer';
+import { startPipeline, getPipelineStatus } from './pipeline';
 import { config } from './config';
 
 function readBody(req: http.IncomingMessage): Promise<string> {
@@ -75,6 +76,77 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     return;
   }
 
+  // --- Transaction transparency endpoints ---
+
+  if (method === 'GET' && url.startsWith('/api/transactions/summary')) {
+    try {
+      const [claimed, swapped, transferred] = await Promise.all([
+        db.transaction.aggregate({ where: { type: 'FEE_RECEIVED', status: 'CONFIRMED' }, _sum: { amountSol: true }, _count: true }),
+        db.transaction.aggregate({ where: { type: 'SOL_SWAP', status: 'CONFIRMED' }, _sum: { amountSol: true, amountUsd: true }, _count: true }),
+        db.transaction.aggregate({ where: { type: 'USDT_TRANSFER', status: 'CONFIRMED' }, _sum: { amountUsd: true }, _count: true }),
+      ]);
+      send(res, 200, {
+        totalSolClaimed: claimed._sum.amountSol ?? 0,
+        totalClaimCount: claimed._count,
+        totalSolSwapped: swapped._sum.amountSol ?? 0,
+        totalUsdtFromSwaps: swapped._sum.amountUsd ?? 0,
+        totalSwapCount: swapped._count,
+        totalUsdtTransferred: transferred._sum.amountUsd ?? 0,
+        totalTransferCount: transferred._count,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      send(res, 500, { error: message });
+    }
+    return;
+  }
+
+  if (method === 'GET' && url.startsWith('/api/transactions')) {
+    try {
+      const parsed = new URL(url, `http://localhost:${config.port}`);
+      const typeFilter = parsed.searchParams.get('type');
+      const limit = Math.min(parseInt(parsed.searchParams.get('limit') ?? '50', 10), 200);
+      const offset = parseInt(parsed.searchParams.get('offset') ?? '0', 10);
+
+      const where = typeFilter ? { type: typeFilter as any } : {};
+      const [transactions, total] = await Promise.all([
+        db.transaction.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          take: limit,
+          skip: offset,
+          include: { campaign: { select: { id: true, name: true } }, token: { select: { id: true, mintAddress: true, symbol: true } } },
+        }),
+        db.transaction.count({ where }),
+      ]);
+
+      send(res, 200, {
+        transactions: transactions.map(tx => ({
+          ...tx,
+          solscanUrl: tx.txSignature ? `https://solscan.io/tx/${tx.txSignature}` : null,
+        })),
+        total,
+        limit,
+        offset,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      send(res, 500, { error: message });
+    }
+    return;
+  }
+
+  if (method === 'GET' && url === '/api/pipeline/status') {
+    try {
+      const status = await getPipelineStatus();
+      send(res, 200, status);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      send(res, 500, { error: message });
+    }
+    return;
+  }
+
   send(res, 404, { error: 'Not found' });
 }
 
@@ -115,7 +187,10 @@ async function main(): Promise<void> {
     startClaimer(),
   ]);
 
-  console.log('[index] all services running');
+  // Start SOL → USDT → Kolo pipeline (runs after claimer deposits SOL)
+  await startPipeline();
+
+  console.log('[index] all services running (monitor + claimer + pipeline)');
 }
 
 main().catch((err) => {

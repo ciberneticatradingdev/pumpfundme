@@ -16,4 +16,9 @@ export const config = {
   pumpFeesProgramId: 'pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ',
   pumpFunProgramId: '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P',
   port: parseInt(process.env.PORT ?? '8000', 10),
+  koloWallet: process.env.KOLO_WALLET ?? 'vcKapasn5HfXpXvdxjBLqrR35rQLb1WrEKZrM3MZiKi',
+  swapThresholdSol: parseFloat(process.env.SWAP_THRESHOLD_SOL ?? '0.05'),
+  swapSlippageBps: parseInt(process.env.SWAP_SLIPPAGE_BPS ?? '50', 10),
+  pipelineIntervalMs: parseInt(process.env.PIPELINE_INTERVAL_MS ?? '600000', 10),
+  usdtMint: 'Es9vMFrzaCERmKfr9GolNRSRBz8rtkTjc6LzDxmkMA',
 } as const;

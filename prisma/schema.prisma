@@ -41,7 +41,7 @@ model Token {
 model Transaction {
   id           String          @id @default(cuid())
   type         TransactionType
-  campaignId   String
+  campaignId   String?
   tokenId      String?
   amountSol    Float
   amountUsd    Float?
@@ -50,7 +50,7 @@ model Transaction {
   metadata     Json?
   createdAt    DateTime        @default(now())
 
-  campaign     Campaign        @relation(fields: [campaignId], references: [id])
+  campaign     Campaign?       @relation(fields: [campaignId], references: [id])
   token        Token?          @relation(fields: [tokenId], references: [id])
 }
 
@@ -75,6 +75,8 @@ enum TransactionType {
   FEE_RECEIVED
   SOL_TRANSFER
   DONATION
+  SOL_SWAP
+  USDT_TRANSFER
 }
 
 enum TxStatus {

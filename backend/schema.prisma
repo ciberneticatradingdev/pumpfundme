@@ -75,6 +75,8 @@ enum TransactionType {
   FEE_RECEIVED
   SOL_TRANSFER
   DONATION
+  SOL_SWAP
+  USDT_TRANSFER
 }
 
 enum TxStatus {
