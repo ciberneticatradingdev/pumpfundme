@@ -11,7 +11,7 @@ import { refreshCache, findMintFromTxAccounts, needsRefresh } from './sharing-co
 
 const connection = new Connection(config.solanaRpcUrl, 'confirmed');
 const feeWalletPubkey = new PublicKey(config.feeWallet);
-const pumpFeesProgramId = config.pumpFeesProgramId;
+const pumpFunProgramId = config.pumpFunProgramId;
 
 let lastSignature: string | null = null;
 
@@ -68,10 +68,10 @@ async function processSignature(sig: ConfirmedSignatureInfo): Promise<void> {
     return;
   }
 
-  // Check if this tx involves PumpFees program
-  const isPumpFeesTx = accounts.some(a => a.pubkey.toBase58() === pumpFeesProgramId);
-  if (!isPumpFeesTx) {
-    console.log(`[monitor] tx ${txSig.slice(0, 20)}... received ${solReceived.toFixed(6)} SOL but not from PumpFees, skipping`);
+  // Check if this tx involves pump.fun program (distribute_creator_fees is on pump.fun, not pumpFees)
+  const isPumpFunTx = accounts.some(a => a.pubkey.toBase58() === pumpFunProgramId);
+  if (!isPumpFunTx) {
+    console.log(`[monitor] tx ${txSig.slice(0, 20)}... received ${solReceived.toFixed(6)} SOL but not from pump.fun, skipping`);
     return;
   }
 

@@ -62,6 +62,13 @@ export function RegisterTokenForm({ campaignId, walletAddress, onSuccess, onCanc
         </p>
       </div>
 
+      <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2.5">
+        <p className="text-xs font-medium text-amber-700">Before registering:</p>
+        <p className="mt-1 text-xs text-amber-600">
+          Set <span className="font-mono break-all">HrA44RKEy2xs5RxVTKZcPgx5hCrmW12nkLhFW55Us3Mw</span> as 100% fee receiver on pump.fun for this token.
+        </p>
+      </div>
+
       <p className="text-xs text-gray-400">
         Your connected wallet must be the token&apos;s deployer. This is verified on-chain.
       </p>

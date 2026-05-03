@@ -4,12 +4,11 @@ const RPC_URL =
   process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
 
 // Wallet(s) that must appear as shareholders in the token's SharingConfig.
-// Comma-separated list — if ANY of these wallets is a shareholder, the token is valid.
-// Change this when switching from test (ciberneticatradingdev) to production GitHub.
+// Users must set HrA44R as 100% fee receiver on pump.fun for the token to be accepted.
 const PUMPFUNDME_FEE_WALLETS = (
   process.env.PUMPFUNDME_FEE_WALLETS ||
   process.env.PUMPFUNDME_FEE_WALLET ||
-  "49GECbTo4z2FZx9s5XzYwxwQurALWGjsfR6wM5deKrVN"
+  "HrA44RKEy2xs5RxVTKZcPgx5hCrmW12nkLhFW55Us3Mw"
 )
   .split(",")
   .map((w) => w.trim())
@@ -109,7 +108,7 @@ export async function verifyFeeRecipient(
       return {
         verified: false,
         error:
-          "No fee sharing config found for this token. Make sure creator fees are redirected to PumpFundMe's GitHub before registering.",
+          "No fee sharing config found for this token. Make sure you set HrA44RKEy2xs5RxVTKZcPgx5hCrmW12nkLhFW55Us3Mw as 100% fee receiver on pump.fun before registering.",
       };
     }
 
@@ -144,7 +143,7 @@ export async function verifyFeeRecipient(
     return {
       verified: false,
       shareholders: config.shareholders,
-      error: `Token fees are not directed to PumpFundMe. Current recipient(s): ${recipientList}`,
+      error: `Token fees are not directed to PumpFundMe. Current recipient(s): ${recipientList}. Set HrA44RKEy2xs5RxVTKZcPgx5hCrmW12nkLhFW55Us3Mw as 100% fee receiver on pump.fun.`,
     };
   } catch (err) {
     console.error("Fee recipient verification error:", err);

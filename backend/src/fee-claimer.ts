@@ -16,7 +16,6 @@ import { withRetry } from './utils';
 
 const connection = new Connection(config.solanaRpcUrl, 'confirmed');
 const PUMP_FUN_PROGRAM = new PublicKey(config.pumpFunProgramId);
-const PUMP_FEES_PROGRAM = new PublicKey(config.pumpFeesProgramId);
 
 const MIN_CLAIM_LAMPORTS = 20_000_000; // 0.02 SOL
 const RENT_EXEMPT = 890_880;
@@ -33,12 +32,11 @@ function getKeypair(): Keypair {
   return signerKeypair;
 }
 
-function discriminator(name: string): Buffer {
-  return crypto.createHash('sha256').update(`global:${name}`).digest().subarray(0, 8);
-}
-
-const DISTRIBUTE_CREATOR_FEES_DISC = discriminator('distribute_creator_fees');
-const CLAIM_SOCIAL_FEE_PDA_DISC = discriminator('claim_social_fee_pda');
+const DISTRIBUTE_CREATOR_FEES_DISC = crypto
+  .createHash('sha256')
+  .update('global:distribute_creator_fees')
+  .digest()
+  .subarray(0, 8);
 
 function getBondingCurvePDA(mint: PublicKey): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync(
@@ -64,14 +62,6 @@ function getPumpFunEventAuthority(): PublicKey {
   return pda;
 }
 
-function getPumpFeesEventAuthority(): PublicKey {
-  const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from('__event_authority')],
-    PUMP_FEES_PROGRAM,
-  );
-  return pda;
-}
-
 export interface ClaimResult {
   mintAddress: string;
   txSignature: string;
@@ -87,15 +77,19 @@ export async function getCreatorVaultBalance(sharingConfigAddr: string): Promise
   return Math.max(0, balance - RENT_EXEMPT);
 }
 
+/**
+ * Claim fees for a single mint using distribute_creator_fees.
+ *
+ * distribute_creator_fees moves SOL from the creator vault directly to HrA44R
+ * (our wallet, which is the 100% shareholder in the SharingConfig).
+ * No claim_social_fee_pda or pump.fun authority needed.
+ */
 export async function claimForMint(mintAddress: string, sharingConfigAddr: string): Promise<ClaimResult> {
   const keypair = getKeypair();
   const mint = new PublicKey(mintAddress);
   const sharingConfig = new PublicKey(sharingConfigAddr);
   const feeWallet = new PublicKey(config.feeWallet);
-  const claimWallet = new PublicKey(config.claimWallet);
-  const globalConfigPubkey = new PublicKey(config.globalConfig);
 
-  // Check claimable balance before sending tx
   const claimableLamports = await getCreatorVaultBalance(sharingConfigAddr);
   if (claimableLamports < MIN_CLAIM_LAMPORTS) {
     const sol = claimableLamports / LAMPORTS_PER_SOL;
@@ -110,10 +104,9 @@ export async function claimForMint(mintAddress: string, sharingConfigAddr: strin
 
   const bondingCurve = getBondingCurvePDA(mint);
   const creatorVault = getCreatorVaultPDA(sharingConfig);
-  const pumpFunEventAuth = getPumpFunEventAuthority();
-  const pumpFeesEventAuth = getPumpFeesEventAuthority();
+  const eventAuth = getPumpFunEventAuthority();
 
-  // Instruction 1: distribute_creator_fees (pump.fun) — moves SOL from creator vault → fee wallet
+  // distribute_creator_fees: moves SOL from creator vault → feeWallet (HrA44R shareholder)
   const distributeIx = new TransactionInstruction({
     programId: PUMP_FUN_PROGRAM,
     keys: [
@@ -122,36 +115,11 @@ export async function claimForMint(mintAddress: string, sharingConfigAddr: strin
       { pubkey: sharingConfig, isSigner: false, isWritable: false },
       { pubkey: creatorVault, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      { pubkey: pumpFunEventAuth, isSigner: false, isWritable: false },
+      { pubkey: eventAuth, isSigner: false, isWritable: false },
       { pubkey: PUMP_FUN_PROGRAM, isSigner: false, isWritable: false },
       { pubkey: feeWallet, isSigner: false, isWritable: true },
     ],
-    data: DISTRIBUTE_CREATOR_FEES_DISC,
-  });
-
-  // Instruction 2: claim_social_fee_pda (PumpFees) — moves SOL from fee wallet → claim wallet
-  // Data format: discriminator(8) + string_len(u32 LE) + social_id(string) + social_type(u8)
-  // social_type: 02 = GitHub
-  const socialId = config.githubUserId; // e.g. "210236109"
-  const socialType = 0x02; // GitHub
-  const socialIdBytes = Buffer.from(socialId, 'utf8');
-  const claimData = Buffer.alloc(8 + 4 + socialIdBytes.length + 1);
-  CLAIM_SOCIAL_FEE_PDA_DISC.copy(claimData, 0);
-  claimData.writeUInt32LE(socialIdBytes.length, 8);
-  socialIdBytes.copy(claimData, 12);
-  claimData.writeUInt8(socialType, 12 + socialIdBytes.length);
-
-  const claimIx = new TransactionInstruction({
-    programId: PUMP_FEES_PROGRAM,
-    keys: [
-      { pubkey: claimWallet, isSigner: false, isWritable: true },
-      { pubkey: feeWallet, isSigner: false, isWritable: true },
-      { pubkey: globalConfigPubkey, isSigner: false, isWritable: false },
-      { pubkey: keypair.publicKey, isSigner: true, isWritable: true },
-      { pubkey: pumpFeesEventAuth, isSigner: false, isWritable: false },
-      { pubkey: PUMP_FEES_PROGRAM, isSigner: false, isWritable: false },
-    ],
-    data: claimData,
+    data: Buffer.from(DISTRIBUTE_CREATOR_FEES_DISC),
   });
 
   try {
@@ -159,7 +127,7 @@ export async function claimForMint(mintAddress: string, sharingConfigAddr: strin
     const message = new TransactionMessage({
       payerKey: keypair.publicKey,
       recentBlockhash: blockhash.blockhash,
-      instructions: [distributeIx, claimIx],
+      instructions: [distributeIx],
     }).compileToV0Message();
 
     const tx = new VersionedTransaction(message);

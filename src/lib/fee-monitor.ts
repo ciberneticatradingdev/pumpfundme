@@ -18,7 +18,7 @@ const ALL_FEES_TTL = 30 * 1000; // 30 s
 
 const PUMPFUNDME_FEE_WALLETS = (
   process.env.PUMPFUNDME_FEE_WALLETS ||
-  "49GECbTo4z2FZx9s5XzYwxwQurALWGjsfR6wM5deKrVN"
+  "HrA44RKEy2xs5RxVTKZcPgx5hCrmW12nkLhFW55Us3Mw"
 )
   .split(",")
   .map((w) => w.trim())
