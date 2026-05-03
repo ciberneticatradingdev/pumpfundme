@@ -71,6 +71,8 @@ export function FeesDashboard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const [claimResult, setClaimResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const fetchFees = useCallback(async () => {
     try {
@@ -129,6 +131,25 @@ export function FeesDashboard({
 
   return (
     <div className={compact ? "" : "space-y-4"}>
+      {/* Claim result toast */}
+      {claimResult && (
+        <div
+          className={`rounded-xl p-3 text-sm font-medium ${
+            claimResult.ok
+              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+              : "bg-red-50 text-red-700 border border-red-200"
+          }`}
+        >
+          {claimResult.msg}
+          <button
+            onClick={() => setClaimResult(null)}
+            className="ml-2 text-xs underline opacity-60 hover:opacity-100"
+          >
+            dismiss
+          </button>
+        </div>
+      )}
+
       {showHeader && (
         <div className="glass rounded-xl p-5">
           <div className="flex items-center justify-between">
@@ -145,6 +166,49 @@ export function FeesDashboard({
                 <span className="text-[10px] text-gray-300">
                   Updated {lastUpdated.toLocaleTimeString()}
                 </span>
+              )}
+              {data.totalClaimableSol > 0 && (
+                <button
+                  onClick={async () => {
+                    setClaiming(true);
+                    setClaimResult(null);
+                    try {
+                      const body = campaignId
+                        ? { campaignId }
+                        : data.tokens.length === 1
+                          ? { mintAddress: data.tokens[0].mintAddress }
+                          : { campaignId: data.tokens[0]?.campaignId };
+                      const res = await fetch("/api/fees/claim", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(body),
+                      });
+                      const json = await res.json();
+                      if (json.success) {
+                        const count = json.claims?.filter((c: { success: boolean }) => c.success).length ?? 0;
+                        setClaimResult({ ok: true, msg: `Claimed ${count} token(s) successfully!` });
+                        fetchFees();
+                      } else {
+                        setClaimResult({ ok: false, msg: json.error || "Claim failed" });
+                      }
+                    } catch (e) {
+                      setClaimResult({ ok: false, msg: e instanceof Error ? e.message : "Claim failed" });
+                    } finally {
+                      setClaiming(false);
+                    }
+                  }}
+                  disabled={claiming}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-500 px-3 text-xs font-semibold text-white transition-all hover:bg-emerald-400 active:scale-95 disabled:opacity-50"
+                >
+                  {claiming ? (
+                    <>
+                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      Claiming…
+                    </>
+                  ) : (
+                    "Claim All"
+                  )}
+                </button>
               )}
               <button
                 onClick={fetchFees}
