@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
       transactions: transactions.map((tx) => ({
         id: tx.id,
         campaignId: tx.campaignId,
-        campaignName: tx.campaign.name,
+        campaignName: tx.campaign?.name ?? null,
         tokenMint: tx.token?.mintAddress ?? null,
         tokenName: tx.token?.name ?? null,
         tokenSymbol: tx.token?.symbol ?? null,

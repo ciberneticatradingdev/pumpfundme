@@ -12,6 +12,7 @@ export function Navbar() {
 
   const links = [
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/transactions", label: "Transparency" },
     { href: "/terminal", label: "Terminal" },
   ];
 

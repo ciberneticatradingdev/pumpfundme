@@ -1,7 +1,35 @@
 import Link from "next/link";
 import Image from "next/image";
+import { prisma } from "@/lib/prisma";
 
-const stats = [
+async function getLiveStats() {
+  if (!prisma) return { raised: "$0.00", campaigns: "0", donations: "0" };
+  try {
+    const [solClaimed, campaignCount, transferCount] = await Promise.all([
+      prisma.transaction.aggregate({
+        where: { type: "FEE_RECEIVED", status: "CONFIRMED" },
+        _sum: { amountSol: true },
+      }),
+      prisma.campaign.count({ where: { status: "ACTIVE" } }),
+      prisma.transaction.aggregate({
+        where: { type: "USDT_TRANSFER", status: "CONFIRMED" },
+        _sum: { amountUsd: true },
+        _count: true,
+      }),
+    ]);
+    const totalSol = solClaimed._sum.amountSol ?? 0;
+    const totalUsdtDonated = transferCount._sum.amountUsd ?? 0;
+    return {
+      raised: `${totalSol.toFixed(2)} SOL`,
+      campaigns: String(campaignCount),
+      donations: totalUsdtDonated > 0 ? `$${totalUsdtDonated.toFixed(2)}` : String(transferCount._count),
+    };
+  } catch {
+    return { raised: "$0.00", campaigns: "0", donations: "0" };
+  }
+}
+
+const defaultStats = [
   { label: "Total Raised", value: "$0.00" },
   { label: "Active Campaigns", value: "0" },
   { label: "Donations Made", value: "0" },
@@ -95,7 +123,15 @@ const faqs = [
   },
 ];
 
-export default function LandingPage() {
+export const revalidate = 30; // refresh stats every 30s
+
+export default async function LandingPage() {
+  const liveStats = await getLiveStats();
+  const stats = [
+    { label: "Total Raised", value: liveStats.raised },
+    { label: "Active Campaigns", value: liveStats.campaigns },
+    { label: "Donations Made", value: liveStats.donations },
+  ];
   return (
     <div className="flex flex-col">
       {/* ── Hero ── */}
