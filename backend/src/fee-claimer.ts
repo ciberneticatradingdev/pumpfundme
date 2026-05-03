@@ -130,6 +130,17 @@ export async function claimForMint(mintAddress: string, sharingConfigAddr: strin
   });
 
   // Instruction 2: claim_social_fee_pda (PumpFees) — moves SOL from fee wallet → claim wallet
+  // Data format: discriminator(8) + string_len(u32 LE) + social_id(string) + social_type(u8)
+  // social_type: 02 = GitHub
+  const socialId = config.githubUserId; // e.g. "210236109"
+  const socialType = 0x02; // GitHub
+  const socialIdBytes = Buffer.from(socialId, 'utf8');
+  const claimData = Buffer.alloc(8 + 4 + socialIdBytes.length + 1);
+  CLAIM_SOCIAL_FEE_PDA_DISC.copy(claimData, 0);
+  claimData.writeUInt32LE(socialIdBytes.length, 8);
+  socialIdBytes.copy(claimData, 12);
+  claimData.writeUInt8(socialType, 12 + socialIdBytes.length);
+
   const claimIx = new TransactionInstruction({
     programId: PUMP_FEES_PROGRAM,
     keys: [
@@ -140,7 +151,7 @@ export async function claimForMint(mintAddress: string, sharingConfigAddr: strin
       { pubkey: pumpFeesEventAuth, isSigner: false, isWritable: false },
       { pubkey: PUMP_FEES_PROGRAM, isSigner: false, isWritable: false },
     ],
-    data: CLAIM_SOCIAL_FEE_PDA_DISC,
+    data: claimData,
   });
 
   try {
