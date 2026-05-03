@@ -20,5 +20,5 @@ export const config = {
   swapThresholdSol: parseFloat(process.env.SWAP_THRESHOLD_SOL ?? '0.05'),
   swapSlippageBps: parseInt(process.env.SWAP_SLIPPAGE_BPS ?? '50', 10),
   pipelineIntervalMs: parseInt(process.env.PIPELINE_INTERVAL_MS ?? '600000', 10),
-  usdtMint: 'Es9vMFrzaCERmKfr9GolNRSRBz8rtkTjc6LzDxmkMA',
+  usdtMint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
 } as const;
