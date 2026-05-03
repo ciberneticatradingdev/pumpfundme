@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { claimFeesForToken, claimFeesForCampaign } from "@/lib/fee-claimer";
-import { getConnection } from "@/lib/solana";
 
 /**
  * POST /api/fees/claim
@@ -13,7 +12,10 @@ import { getConnection } from "@/lib/solana";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { mintAddress, campaignId } = body;
+    const { mintAddress, campaignId } = body as {
+      mintAddress?: string;
+      campaignId?: string;
+    };
 
     if (!mintAddress && !campaignId) {
       return NextResponse.json(
@@ -22,17 +24,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const conn = getConnection();
-
     // Single token claim
     if (mintAddress) {
-      const result = await claimFeesForToken(mintAddress, conn);
+      const result = await claimFeesForToken(mintAddress);
 
       if (result.success && prisma) {
-        // Find token in DB to get campaignId
         const token = await prisma.token.findUnique({
           where: { mintAddress },
-          select: { campaignId: true },
+          select: { id: true, campaignId: true },
         });
 
         if (token) {
@@ -40,8 +39,8 @@ export async function POST(req: NextRequest) {
             data: {
               type: "FEE_RECEIVED",
               campaignId: token.campaignId,
-              tokenId: mintAddress,
-              amountSol: 0, // We don't know exact amount without parsing tx
+              tokenId: token.id,
+              amountSol: result.amountSol,
               txSignature: result.txSignature,
               status: "CONFIRMED",
               metadata: { claimType: "single" },
@@ -52,57 +51,66 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         success: result.success,
-        claims: [result],
+        claims: [
+          {
+            mintAddress: result.mintAddress,
+            txSignature: result.txSignature,
+            amountSol: result.amountSol,
+          },
+        ],
+        ...(result.error ? { error: result.error } : {}),
       });
     }
 
     // Campaign claim
-    if (campaignId && prisma) {
-      const campaign = await prisma.campaign.findUnique({
-        where: { id: campaignId },
-        include: { tokens: { select: { mintAddress: true } } },
+    if (!prisma) {
+      return NextResponse.json({ error: "Database not available" }, { status: 503 });
+    }
+
+    const campaignExists = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { id: true },
+    });
+
+    if (!campaignExists) {
+      return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+
+    const results = await claimFeesForCampaign(campaignId!);
+
+    // Log successful claims to DB
+    for (const result of results) {
+      if (!result.success) continue;
+      const token = await prisma.token.findUnique({
+        where: { mintAddress: result.mintAddress },
+        select: { id: true },
       });
-
-      if (!campaign) {
-        return NextResponse.json(
-          { error: "Campaign not found" },
-          { status: 404 }
-        );
-      }
-
-      if (campaign.tokens.length === 0) {
-        return NextResponse.json(
-          { error: "No tokens in campaign" },
-          { status: 400 }
-        );
-      }
-
-      const results = await claimFeesForCampaign(campaign.tokens, conn);
-
-      // Log successful claims
-      for (const result of results) {
-        if (result.success) {
-          await prisma.transaction.create({
+      if (token) {
+        await prisma.transaction
+          .create({
             data: {
               type: "FEE_RECEIVED",
-              campaignId,
-              tokenId: result.mintAddress,
-              amountSol: 0,
+              campaignId: campaignId!,
+              tokenId: token.id,
+              amountSol: result.amountSol,
               txSignature: result.txSignature,
               status: "CONFIRMED",
               metadata: { claimType: "campaign" },
             },
+          })
+          .catch((dbErr: unknown) => {
+            console.error("[fees/claim] DB log error:", dbErr);
           });
-        }
       }
-
-      return NextResponse.json({
-        success: results.every((r) => r.success),
-        claims: results,
-      });
     }
 
-    return NextResponse.json({ error: "Database not available" }, { status: 503 });
+    const claims = results.map((r) => ({
+      mintAddress: r.mintAddress,
+      txSignature: r.txSignature,
+      amountSol: r.amountSol,
+    }));
+
+    return NextResponse.json({ success: true, claims });
   } catch (err) {
     console.error("[fees/claim] Error:", err);
     const message = err instanceof Error ? err.message : "Unknown error";

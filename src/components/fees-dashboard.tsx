@@ -72,7 +72,31 @@ export function FeesDashboard({
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [claiming, setClaiming] = useState(false);
+  const [claimingMint, setClaimingMint] = useState<string | null>(null);
   const [claimResult, setClaimResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const claimSingle = async (mintAddress: string) => {
+    setClaimingMint(mintAddress);
+    setClaimResult(null);
+    try {
+      const res = await fetch("/api/fees/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mintAddress }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setClaimResult({ ok: true, msg: `Claimed ${json.claims[0]?.amountSol?.toFixed(6) ?? ''} SOL!` });
+        fetchFees();
+      } else {
+        setClaimResult({ ok: false, msg: json.error || "Claim failed" });
+      }
+    } catch (e) {
+      setClaimResult({ ok: false, msg: e instanceof Error ? e.message : "Claim failed" });
+    } finally {
+      setClaimingMint(null);
+    }
+  };
 
   const fetchFees = useCallback(async () => {
     try {
@@ -185,7 +209,7 @@ export function FeesDashboard({
                       });
                       const json = await res.json();
                       if (json.success) {
-                        const count = json.claims?.filter((c: { success: boolean }) => c.success).length ?? 0;
+                        const count = json.claims?.length ?? 0;
                         setClaimResult({ ok: true, msg: `Claimed ${count} token(s) successfully!` });
                         fetchFees();
                       } else {
@@ -270,14 +294,25 @@ export function FeesDashboard({
                   </p>
                 )}
               </div>
-              <div className="ml-4 text-right">
-                <SolAmount sol={token.claimableSol} size="sm" />
-                {token.claimableSol > 0 &&
-                  token.balanceSol !== token.claimableSol && (
-                    <p className="text-[10px] text-gray-300">
-                      vault: {formatSol(token.balanceSol)} SOL
-                    </p>
-                  )}
+              <div className="ml-4 flex items-center gap-2">
+                <div className="text-right">
+                  <SolAmount sol={token.claimableSol} size="sm" />
+                  {token.claimableSol > 0 &&
+                    token.balanceSol !== token.claimableSol && (
+                      <p className="text-[10px] text-gray-300">
+                        vault: {formatSol(token.balanceSol)} SOL
+                      </p>
+                    )}
+                </div>
+                {token.claimableSol >= 0.02 && (
+                  <button
+                    onClick={() => claimSingle(token.mintAddress)}
+                    disabled={claimingMint === token.mintAddress || claiming}
+                    className="inline-flex h-6 items-center rounded-md bg-emerald-100 px-2 text-[10px] font-semibold text-emerald-700 transition-all hover:bg-emerald-200 active:scale-95 disabled:opacity-50"
+                  >
+                    {claimingMint === token.mintAddress ? "…" : "Claim"}
+                  </button>
+                )}
               </div>
             </div>
           ))}

@@ -9,7 +9,12 @@ import {
 import bs58 from "bs58";
 import crypto from "crypto";
 import { getConnection } from "./solana";
-import { getSharingConfigForMint, invalidateFeeCache } from "./fee-monitor";
+import {
+  getSharingConfigForMint,
+  getClaimableBalance,
+  invalidateFeeCache,
+} from "./fee-monitor";
+import { prisma } from "./prisma";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -20,23 +25,17 @@ const PUMP_FEES_PROGRAM = new PublicKey(
   "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ"
 );
 const SYSTEM_PROGRAM = new PublicKey("11111111111111111111111111111111");
-
-/** PumpFees global config singleton */
 const GLOBAL_CONFIG = new PublicKey(
   "CHqnuTkj6sXDFknM652aEFPECZh9qVsBXWkhPohmV9dA"
 );
-
-/** Our shareholder wallet (fees accumulate here via distribute_creator_fees) */
 const FEE_WALLET = new PublicKey(
   "49GECbTo4z2FZx9s5XzYwxwQurALWGjsfR6wM5deKrVN"
 );
-
-/** Claim wallet — we have the private key, receives SOL from claim_social_fee_pda */
 const CLAIM_WALLET = new PublicKey(
   "HrA44RKEy2xs5RxVTKZcPgx5hCrmW12nkLhFW55Us3Mw"
 );
 
-// ── Discriminators ───────────────────────────────────────────────────────────
+// ── Discriminators ────────────────────────────────────────────────────────────
 
 function getDiscriminator(name: string): Buffer {
   return crypto
@@ -91,14 +90,17 @@ function getSignerKeypair(): Keypair {
   return Keypair.fromSecretKey(bs58.decode(key));
 }
 
-// ── Build claim transaction ──────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ClaimResult {
   mintAddress: string;
   txSignature: string;
+  amountSol: number;
   success: boolean;
   error?: string;
 }
+
+// ── Build claim transaction ──────────────────────────────────────────────────
 
 /**
  * Build the 2-instruction claim transaction for a single token.
@@ -117,7 +119,6 @@ export async function buildClaimTransaction(
   const conn = connection ?? getConnection();
   const mint = new PublicKey(mintAddress);
 
-  // Resolve SharingConfig for this token
   const config = await getSharingConfigForMint(mintAddress, conn);
   if (!config) {
     throw new Error(`No SharingConfig found for mint ${mintAddress}`);
@@ -159,7 +160,6 @@ export async function buildClaimTransaction(
     data: CLAIM_SOCIAL_FEE_PDA_DISC,
   });
 
-  // Build versioned transaction
   const { blockhash } = await conn.getLatestBlockhash("confirmed");
   const messageV0 = new TransactionMessage({
     payerKey: signerPubkey,
@@ -170,9 +170,8 @@ export async function buildClaimTransaction(
   return new VersionedTransaction(messageV0);
 }
 
-/**
- * Claim fees for a single token: build, sign, send.
- */
+// ── Claim execution ──────────────────────────────────────────────────────────
+
 export async function claimFeesForToken(
   mintAddress: string,
   connection?: Connection
@@ -181,6 +180,18 @@ export async function claimFeesForToken(
   const signer = getSignerKeypair();
 
   try {
+    const MIN_CLAIM_LAMPORTS = 20_000_000; // ~0.02 SOL minimum enforced by pump.fun
+    const claimable = await getClaimableBalance(mintAddress, conn);
+    if (!claimable || claimable.claimableLamports === 0) {
+      throw new Error("No claimable balance");
+    }
+    if (claimable.claimableLamports < MIN_CLAIM_LAMPORTS) {
+      throw new Error(
+        `Below minimum: ${claimable.claimableSol.toFixed(6)} SOL (need ~0.02 SOL)`
+      );
+    }
+    const amountSol = claimable.claimableSol;
+
     const tx = await buildClaimTransaction(mintAddress, signer.publicKey, conn);
     tx.sign([signer]);
 
@@ -189,47 +200,38 @@ export async function claimFeesForToken(
       maxRetries: 3,
     });
 
-    // Wait for confirmation
     const confirmation = await conn.confirmTransaction(txSignature, "confirmed");
     if (confirmation.value.err) {
-      throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      throw new Error(
+        `Transaction failed: ${JSON.stringify(confirmation.value.err)}`
+      );
     }
 
-    // Invalidate fee cache so dashboard refreshes
     invalidateFeeCache();
 
-    return {
-      mintAddress,
-      txSignature,
-      success: true,
-    };
+    return { mintAddress, txSignature, amountSol, success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error(`[fee-claimer] Claim failed for ${mintAddress}:`, message);
-    return {
-      mintAddress,
-      txSignature: "",
-      success: false,
-      error: message,
-    };
+    return { mintAddress, txSignature: "", amountSol: 0, success: false, error: message };
   }
 }
 
-/**
- * Claim fees for all tokens in a campaign, sequentially.
- */
-export async function claimFeesForCampaign(
-  tokens: { mintAddress: string }[],
-  connection?: Connection
-): Promise<ClaimResult[]> {
-  const conn = connection ?? getConnection();
+export async function claimFeesForCampaign(campaignId: string): Promise<ClaimResult[]> {
+  if (!prisma) throw new Error("Database not configured");
+
+  const tokens = await prisma.token.findMany({
+    where: { campaignId },
+    select: { mintAddress: true },
+  });
+
+  const conn = getConnection();
   const results: ClaimResult[] = [];
 
-  for (const token of tokens) {
-    const result = await claimFeesForToken(token.mintAddress, conn);
+  for (let i = 0; i < tokens.length; i++) {
+    const result = await claimFeesForToken(tokens[i].mintAddress, conn);
     results.push(result);
-    // Small delay between claims to avoid rate limits
-    if (tokens.indexOf(token) < tokens.length - 1) {
+    if (i < tokens.length - 1) {
       await new Promise((r) => setTimeout(r, 500));
     }
   }
