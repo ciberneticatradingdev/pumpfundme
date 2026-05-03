@@ -6,6 +6,7 @@ import {
 } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { config } from './config';
+import { db } from './db';
 import { swapSolToUsdt, getUsdtBalance as getSwapUsdtBalance } from './jupiter-swap';
 import { transferUsdtToKolo, getUsdtBalance as getTransferUsdtBalance } from './kolo-transfer';
 
@@ -29,6 +30,8 @@ export interface PipelineStatus {
   usdtBalanceHrA44R: number;
   usdtBalanceKolo: number;
   swapThresholdSol: number;
+  pendingSwapSol: number;
+  pendingTransferUsdt: number;
   lastRunAt: string | null;
   lastSwapAt: string | null;
   lastTransferAt: string | null;
@@ -39,21 +42,69 @@ let lastSwapAt: Date | null = null;
 let lastTransferAt: Date | null = null;
 
 /**
- * Get current pipeline status — balances + last run times.
+ * Calculate how much SOL from claims hasn't been swapped yet.
+ * = sum(FEE_RECEIVED confirmed) - sum(SOL_SWAP confirmed)
+ */
+async function getPendingSwapSol(): Promise<number> {
+  const [claimed, swapped] = await Promise.all([
+    db.transaction.aggregate({
+      where: { type: 'FEE_RECEIVED', status: 'CONFIRMED' },
+      _sum: { amountSol: true },
+    }),
+    db.transaction.aggregate({
+      where: { type: 'SOL_SWAP', status: 'CONFIRMED' },
+      _sum: { amountSol: true },
+    }),
+  ]);
+
+  const totalClaimed = claimed._sum.amountSol ?? 0;
+  const totalSwapped = swapped._sum.amountSol ?? 0;
+  return Math.max(0, totalClaimed - totalSwapped);
+}
+
+/**
+ * Calculate how much USDT from swaps hasn't been transferred yet.
+ * = sum(SOL_SWAP.amountUsd confirmed) - sum(USDT_TRANSFER.amountUsd confirmed)
+ */
+async function getPendingTransferUsdt(): Promise<number> {
+  const [swapped, transferred] = await Promise.all([
+    db.transaction.aggregate({
+      where: { type: 'SOL_SWAP', status: 'CONFIRMED' },
+      _sum: { amountUsd: true },
+    }),
+    db.transaction.aggregate({
+      where: { type: 'USDT_TRANSFER', status: 'CONFIRMED' },
+      _sum: { amountUsd: true },
+    }),
+  ]);
+
+  const totalSwappedUsdt = swapped._sum.amountUsd ?? 0;
+  const totalTransferred = transferred._sum.amountUsd ?? 0;
+  return Math.max(0, totalSwappedUsdt - totalTransferred);
+}
+
+/**
+ * Get current pipeline status — ledger-based + wallet balances + last run times.
  */
 export async function getPipelineStatus(): Promise<PipelineStatus> {
   const keypair = getKeypair();
   const koloWallet = new PublicKey(config.koloWallet);
 
-  const solBalance = await connection.getBalance(keypair.publicKey, 'confirmed');
-  const usdtHrA44R = await getSwapUsdtBalance(keypair.publicKey);
-  const usdtKolo = await getTransferUsdtBalance(koloWallet);
+  const [solBalance, usdtHrA44R, usdtKolo, pendingSwapSol, pendingTransferUsdt] = await Promise.all([
+    connection.getBalance(keypair.publicKey, 'confirmed'),
+    getSwapUsdtBalance(keypair.publicKey),
+    getTransferUsdtBalance(koloWallet),
+    getPendingSwapSol(),
+    getPendingTransferUsdt(),
+  ]);
 
   return {
     solBalanceHrA44R: solBalance / LAMPORTS_PER_SOL,
     usdtBalanceHrA44R: usdtHrA44R,
     usdtBalanceKolo: usdtKolo,
     swapThresholdSol: config.swapThresholdSol,
+    pendingSwapSol,
+    pendingTransferUsdt,
     lastRunAt: lastRunAt?.toISOString() ?? null,
     lastSwapAt: lastSwapAt?.toISOString() ?? null,
     lastTransferAt: lastTransferAt?.toISOString() ?? null,
@@ -61,45 +112,58 @@ export async function getPipelineStatus(): Promise<PipelineStatus> {
 }
 
 /**
- * Run one pipeline cycle:
- * 1. Check SOL balance → swap to USDT if above threshold
- * 2. Check USDT balance → transfer to Kolo if > 0
+ * Run one pipeline cycle (LEDGER-BASED):
+ * 1. Check how much SOL from claims hasn't been swapped → swap only that
+ * 2. Check how much USDT from swaps hasn't been transferred → transfer only that
  */
 async function runPipelineCycle(): Promise<void> {
-  const keypair = getKeypair();
+  getKeypair();
   lastRunAt = new Date();
 
-  console.log(`[pipeline] --- cycle start ---`);
+  console.log(`[pipeline] --- cycle start (ledger-based) ---`);
 
-  // Step 1: Check SOL balance and swap if enough
-  const solBalance = await connection.getBalance(keypair.publicKey, 'confirmed');
-  const availableLamports = solBalance - GAS_RESERVE_LAMPORTS;
-  const availableSol = availableLamports / LAMPORTS_PER_SOL;
-  const thresholdLamports = config.swapThresholdSol * LAMPORTS_PER_SOL;
+  // Step 1: How much claim SOL is pending swap?
+  const pendingSol = await getPendingSwapSol();
+  const pendingLamports = Math.floor(pendingSol * LAMPORTS_PER_SOL);
+  const thresholdLamports = Math.floor(config.swapThresholdSol * LAMPORTS_PER_SOL);
 
-  console.log(`[pipeline] SOL balance: ${(solBalance / LAMPORTS_PER_SOL).toFixed(6)} (available: ${availableSol.toFixed(6)}, threshold: ${config.swapThresholdSol})`);
+  console.log(`[pipeline] pending swap from claims: ${pendingSol.toFixed(6)} SOL (threshold: ${config.swapThresholdSol})`);
 
-  if (availableLamports >= thresholdLamports) {
-    console.log(`[pipeline] above threshold — swapping ${availableSol.toFixed(6)} SOL → USDT`);
-    const swapResult = await swapSolToUsdt(availableLamports);
-    if (swapResult.success) {
-      lastSwapAt = new Date();
-      console.log(`[pipeline] swap OK: ${swapResult.amountUsdt.toFixed(2)} USDT received`);
+  if (pendingLamports >= thresholdLamports) {
+    // Verify we actually have enough SOL in wallet (claims - gas reserve)
+    const keypair = getKeypair();
+    const walletBalance = await connection.getBalance(keypair.publicKey, 'confirmed');
+    const maxSwapLamports = walletBalance - GAS_RESERVE_LAMPORTS;
+
+    // Swap the LESSER of: pending claim SOL or available wallet balance
+    const swapLamports = Math.min(pendingLamports, maxSwapLamports);
+
+    if (swapLamports < thresholdLamports) {
+      console.log(`[pipeline] wallet balance too low for pending claims (wallet: ${(walletBalance / LAMPORTS_PER_SOL).toFixed(6)}, need: ${pendingSol.toFixed(6)} + gas)`);
     } else {
-      console.error(`[pipeline] swap failed: ${swapResult.error}`);
-      // Don't return — still try to transfer any existing USDT
+      const swapSol = swapLamports / LAMPORTS_PER_SOL;
+      console.log(`[pipeline] swapping ${swapSol.toFixed(6)} SOL → USDT (from claims only)`);
+      const swapResult = await swapSolToUsdt(swapLamports);
+      if (swapResult.success) {
+        lastSwapAt = new Date();
+        console.log(`[pipeline] swap OK: ${swapResult.amountUsdt.toFixed(2)} USDT received`);
+      } else {
+        console.error(`[pipeline] swap failed: ${swapResult.error}`);
+      }
     }
   } else {
     console.log(`[pipeline] below threshold — skipping swap`);
   }
 
-  // Step 2: Check USDT balance and transfer to Kolo
-  const usdtBalance = await getSwapUsdtBalance(keypair.publicKey);
-  console.log(`[pipeline] USDT balance in HrA44R: ${usdtBalance.toFixed(2)}`);
+  // Step 2: How much USDT from swaps is pending transfer?
+  const pendingUsdt = await getPendingTransferUsdt();
+  console.log(`[pipeline] pending transfer from swaps: ${pendingUsdt.toFixed(2)} USDT`);
 
-  if (usdtBalance > 0) {
-    console.log(`[pipeline] transferring ${usdtBalance.toFixed(2)} USDT → Kolo`);
-    const transferResult = await transferUsdtToKolo();
+  if (pendingUsdt > 0.01) { // min $0.01 to avoid dust transfers
+    // Convert to raw amount (6 decimals)
+    const rawAmount = Math.floor(pendingUsdt * 1_000_000);
+    console.log(`[pipeline] transferring ${pendingUsdt.toFixed(2)} USDT → Kolo`);
+    const transferResult = await transferUsdtToKolo(rawAmount);
     if (transferResult.success) {
       lastTransferAt = new Date();
       console.log(`[pipeline] transfer OK: ${transferResult.amountUsdt.toFixed(2)} USDT sent to Kolo`);
@@ -107,7 +171,7 @@ async function runPipelineCycle(): Promise<void> {
       console.error(`[pipeline] transfer failed: ${transferResult.error}`);
     }
   } else {
-    console.log(`[pipeline] no USDT to transfer — skipping`);
+    console.log(`[pipeline] no USDT pending transfer — skipping`);
   }
 
   console.log(`[pipeline] --- cycle end ---`);
@@ -125,6 +189,7 @@ export async function startPipeline(): Promise<void> {
     return;
   }
 
+  console.log(`[pipeline] mode: LEDGER-BASED (only swaps/transfers from recorded claims)`);
   console.log(`[pipeline] interval: ${config.pipelineIntervalMs}ms | threshold: ${config.swapThresholdSol} SOL | kolo: ${config.koloWallet.slice(0, 10)}...`);
 
   // Run first cycle
