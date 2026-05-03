@@ -24,6 +24,15 @@ const USDT_DECIMALS = 6;
 const JUPITER_QUOTE_URL = 'https://quote-api.jup.ag/v6/quote';
 const JUPITER_SWAP_URL = 'https://quote-api.jup.ag/v6/swap';
 
+interface JupiterQuote {
+  outAmount: string;
+  routePlan?: Array<{ swapInfo?: { label?: string } }>;
+}
+
+interface JupiterSwap {
+  swapTransaction: string;
+}
+
 export interface SwapResult {
   success: boolean;
   txSignature: string;
@@ -108,10 +117,10 @@ export async function swapSolToUsdt(amountLamports: number): Promise<SwapResult>
       slippageBps: config.swapSlippageBps.toString(),
     });
 
-    const quoteRes = await withRetry(async () => {
+    const quoteRes: JupiterQuote = await withRetry(async () => {
       const res = await fetch(`${JUPITER_QUOTE_URL}?${quoteParams}`);
       if (!res.ok) throw new Error(`Jupiter quote failed: ${res.status} ${await res.text()}`);
-      return res.json();
+      return res.json() as Promise<JupiterQuote>;
     });
 
     const outAmount = parseInt(quoteRes.outAmount, 10);
@@ -121,7 +130,7 @@ export async function swapSolToUsdt(amountLamports: number): Promise<SwapResult>
     console.log(`[swap] quote: ${amountSol.toFixed(6)} SOL → ${amountUsdt.toFixed(2)} USDT (price: $${pricePerSol.toFixed(2)}/SOL)`);
 
     // 2. Get swap transaction
-    const swapRes = await withRetry(async () => {
+    const swapRes: JupiterSwap = await withRetry(async () => {
       const res = await fetch(JUPITER_SWAP_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -134,7 +143,7 @@ export async function swapSolToUsdt(amountLamports: number): Promise<SwapResult>
         }),
       });
       if (!res.ok) throw new Error(`Jupiter swap failed: ${res.status} ${await res.text()}`);
-      return res.json();
+      return res.json() as Promise<JupiterSwap>;
     });
 
     // 3. Sign and send
@@ -164,7 +173,7 @@ export async function swapSolToUsdt(amountLamports: number): Promise<SwapResult>
         txSignature,
         status: 'CONFIRMED',
         metadata: {
-          route: quoteRes.routePlan?.map((r: { swapInfo?: { label?: string } }) => r.swapInfo?.label).filter(Boolean) ?? [],
+          route: (quoteRes.routePlan?.map((r) => r.swapInfo?.label).filter((x): x is string => !!x) ?? []) as string[],
           pricePerSol,
           slippageBps: config.swapSlippageBps,
           inputMint: SOL_MINT,
