@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getClaimableByCampaign } from "@/lib/fee-monitor";
+import { getAllFeesWithCache } from "@/lib/fee-monitor";
 import { getConnection } from "@/lib/solana";
 
 /**
  * GET /api/fees/balances/[campaignId]
  *
- * Returns fees for a specific campaign's tokens.
+ * Returns fees for a specific campaign by filtering the shared cache.
+ * Fetches all tokens so both this route and the global route warm the same cache.
  */
 export async function GET(
   _req: NextRequest,
@@ -14,6 +15,7 @@ export async function GET(
 ) {
   try {
     const { campaignId } = await params;
+
     if (!prisma) {
       return NextResponse.json(
         { error: "Database not available" },
@@ -21,21 +23,21 @@ export async function GET(
       );
     }
 
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId },
-      include: {
-        tokens: { select: { mintAddress: true, name: true, symbol: true } },
-      },
-    });
+    const [campaign, allTokens] = await Promise.all([
+      prisma.campaign.findUnique({
+        where: { id: campaignId },
+        select: { id: true, name: true },
+      }),
+      prisma.token.findMany({
+        include: { campaign: { select: { id: true, name: true } } },
+      }),
+    ]);
 
     if (!campaign) {
-      return NextResponse.json(
-        { error: "Campaign not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    if (campaign.tokens.length === 0) {
+    if (allTokens.length === 0) {
       return NextResponse.json({
         campaignId,
         campaignName: campaign.name,
@@ -45,29 +47,24 @@ export async function GET(
       });
     }
 
-    const conn = getConnection();
-    const result = await getClaimableByCampaign(campaign.tokens, conn);
-
-    // Enrich with token name/symbol
-    const tokenMap = new Map(
-      campaign.tokens.map((t) => [t.mintAddress, t])
+    const allFees = await getAllFeesWithCache(
+      allTokens.map((t) => ({
+        mintAddress: t.mintAddress,
+        campaignId: t.campaign.id,
+        campaignName: t.campaign.name,
+      })),
+      getConnection()
     );
-    const enrichedTokens = result.tokens.map((t) => {
-      const meta = tokenMap.get(t.mintAddress);
-      return {
-        ...t,
-        name: meta?.name ?? null,
-        symbol: meta?.symbol ?? null,
-      };
-    });
 
-    return NextResponse.json({
+    const campaignFees = allFees.byCampaign[campaignId] ?? {
       campaignId,
       campaignName: campaign.name,
-      tokens: enrichedTokens,
-      totalClaimableLamports: result.totalClaimableLamports,
-      totalClaimableSol: result.totalClaimableSol,
-    });
+      tokens: [],
+      totalClaimableLamports: 0,
+      totalClaimableSol: 0,
+    };
+
+    return NextResponse.json(campaignFees);
   } catch (err) {
     console.error("[fees/balances/campaign] Error:", err);
     const message = err instanceof Error ? err.message : "Unknown error";

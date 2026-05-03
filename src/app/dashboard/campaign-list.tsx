@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { CreateCampaignForm } from "./create-campaign-form";
 import { RegisterTokenForm } from "./register-token-form";
@@ -28,11 +28,17 @@ interface Campaign {
   _count?: { tokens: number };
 }
 
+interface FeesResponse {
+  byCampaign: Record<string, { totalClaimableSol: number }>;
+}
+
 const statusStyles: Record<string, string> = {
   ACTIVE: "bg-emerald-50 text-emerald-600 border-emerald-200",
   PAUSED: "bg-yellow-50 text-yellow-600 border-yellow-200",
   COMPLETED: "bg-blue-50 text-blue-600 border-blue-200",
 };
+
+const FEE_REFRESH_MS = 30_000;
 
 interface Props {
   walletAddress: string;
@@ -41,10 +47,14 @@ interface Props {
 export function CampaignList({ walletAddress }: Props) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
+  // undefined = loading, null = error, map = data
+  const [feeByCampaign, setFeeByCampaign] = useState<
+    Record<string, number> | null | undefined
+  >(undefined);
   const [showCreate, setShowCreate] = useState(false);
   const [registerTokenFor, setRegisterTokenFor] = useState<string | null>(null);
 
-  const fetchCampaigns = async () => {
+  const fetchCampaigns = useCallback(async () => {
     try {
       const res = await fetch(`/api/campaigns?wallet=${walletAddress}`);
       if (res.ok) {
@@ -54,12 +64,35 @@ export function CampaignList({ walletAddress }: Props) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [walletAddress]);
+
+  const fetchFees = useCallback(async () => {
+    try {
+      const res = await fetch("/api/fees/balances");
+      if (!res.ok) {
+        setFeeByCampaign(null);
+        return;
+      }
+      const data: FeesResponse = await res.json();
+      const map: Record<string, number> = {};
+      for (const [id, fees] of Object.entries(data.byCampaign ?? {})) {
+        map[id] = fees.totalClaimableSol;
+      }
+      setFeeByCampaign(map);
+    } catch {
+      setFeeByCampaign(null);
+    }
+  }, []);
 
   useEffect(() => {
     fetchCampaigns();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [walletAddress]);
+  }, [fetchCampaigns]);
+
+  useEffect(() => {
+    fetchFees();
+    const interval = setInterval(fetchFees, FEE_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [fetchFees]);
 
   if (loading) {
     return (
@@ -177,7 +210,15 @@ export function CampaignList({ walletAddress }: Props) {
                     {c.totalSolReceived.toFixed(4)}
                   </p>
                 </div>
-                <FeeSummaryCard campaignId={c.id} />
+                <FeeSummaryCard
+                  claimableSol={
+                    feeByCampaign === undefined
+                      ? undefined
+                      : feeByCampaign === null
+                        ? null
+                        : (feeByCampaign[c.id] ?? 0)
+                  }
+                />
               </div>
 
               {/* Linked Tokens */}

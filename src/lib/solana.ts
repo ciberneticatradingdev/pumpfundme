@@ -2,7 +2,9 @@ import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 
 export function getConnection(): Connection {
-  const rpc = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+  const rpc =
+    process.env.SOLANA_RPC_URL ||
+    "https://solana-mainnet.core.chainstack.com/174837f428ce912cd5dea299d401cd8f";
   return new Connection(rpc, "confirmed");
 }
 

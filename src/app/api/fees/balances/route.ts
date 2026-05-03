@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getClaimableBalances } from "@/lib/fee-monitor";
+import { getAllFeesWithCache } from "@/lib/fee-monitor";
 import { getConnection } from "@/lib/solana";
 
 /**
  * GET /api/fees/balances
  *
- * Returns accumulated fees per token for all registered tokens.
- * Groups results by campaign.
+ * Returns accumulated fees for all registered tokens.
+ * Uses server-side cache (30 s TTL) to avoid RPC rate limits.
+ * Response includes byCampaign for efficient client-side filtering.
  */
 export async function GET() {
   try {
@@ -18,12 +19,9 @@ export async function GET() {
       );
     }
 
-    // Fetch all tokens with their campaigns
     const tokens = await prisma.token.findMany({
       include: {
-        campaign: {
-          select: { id: true, name: true },
-        },
+        campaign: { select: { id: true, name: true } },
       },
     });
 
@@ -32,30 +30,20 @@ export async function GET() {
         tokens: [],
         totalClaimableLamports: 0,
         totalClaimableSol: 0,
+        byCampaign: {},
       });
     }
 
-    const conn = getConnection();
-
-    const balances = await getClaimableBalances(
+    const result = await getAllFeesWithCache(
       tokens.map((t) => ({
         mintAddress: t.mintAddress,
         campaignId: t.campaign.id,
         campaignName: t.campaign.name,
       })),
-      conn
+      getConnection()
     );
 
-    const totalClaimableLamports = balances.reduce(
-      (sum, b) => sum + b.claimableLamports,
-      0
-    );
-
-    return NextResponse.json({
-      tokens: balances,
-      totalClaimableLamports,
-      totalClaimableSol: totalClaimableLamports / 1e9,
-    });
+    return NextResponse.json(result);
   } catch (err) {
     console.error("[fees/balances] Error:", err);
     const message = err instanceof Error ? err.message : "Unknown error";
