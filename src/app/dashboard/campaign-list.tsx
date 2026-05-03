@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CreateCampaignForm } from "./create-campaign-form";
 import { RegisterTokenForm } from "./register-token-form";
+import { FeeSummaryCard } from "@/components/fees-dashboard";
 
 interface Token {
   id: string;
@@ -176,14 +177,7 @@ export function CampaignList({ walletAddress }: Props) {
                     {c.totalSolReceived.toFixed(4)}
                   </p>
                 </div>
-                <div className="rounded-lg bg-gray-50 px-3 py-2">
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400">
-                    USD Donated
-                  </p>
-                  <p className="mt-0.5 font-mono text-sm font-semibold">
-                    ${c.totalDonatedUsd.toFixed(2)}
-                  </p>
-                </div>
+                <FeeSummaryCard campaignId={c.id} />
               </div>
 
               {/* Linked Tokens */}

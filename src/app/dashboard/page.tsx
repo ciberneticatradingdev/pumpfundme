@@ -3,6 +3,7 @@
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { CampaignList } from "./campaign-list";
+import { FeesDashboard } from "@/components/fees-dashboard";
 
 export default function DashboardPage() {
   const { publicKey, connecting } = useWallet();
@@ -54,6 +55,17 @@ export default function DashboardPage() {
           Manage campaigns and track donations in real time.
         </p>
       </div>
+      {/* Fees Overview */}
+      <div className="mb-8 animate-fade-in-up">
+        <div className="mb-4">
+          <h2 className="text-xl font-bold tracking-tight">Fee Overview</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Claimable creator fees across all campaigns.
+          </p>
+        </div>
+        <FeesDashboard showHeader={true} refreshInterval={30_000} />
+      </div>
+
       <CampaignList walletAddress={publicKey.toBase58()} />
     </div>
   );

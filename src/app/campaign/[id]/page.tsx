@@ -2,6 +2,8 @@
 
 import { useEffect, useState, use } from "react";
 import Link from "next/link";
+import { FeesDashboard } from "@/components/fees-dashboard";
+import { FeeHistory } from "@/components/fee-history";
 
 interface Token {
   id: string;
@@ -253,6 +255,27 @@ export default function CampaignDetailPage({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Fees Section */}
+      <div className="mt-8 glass rounded-xl overflow-hidden">
+        <div className="border-b border-gray-200 px-5 py-4">
+          <h2 className="text-lg font-semibold">Creator Fees</h2>
+          <p className="mt-0.5 text-xs text-gray-400">
+            Accumulated trading fees from linked tokens. Auto-refreshes every 30s.
+          </p>
+        </div>
+        <div className="p-5">
+          <FeesDashboard campaignId={id} showHeader={true} compact={false} />
+        </div>
+      </div>
+
+      {/* Claim History */}
+      <div className="mt-6 glass rounded-xl overflow-hidden">
+        <div className="border-b border-gray-200 px-5 py-4">
+          <h2 className="text-lg font-semibold">Claim History</h2>
+        </div>
+        <FeeHistory campaignId={id} />
       </div>
 
       {/* Activity Feed */}
