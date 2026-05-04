@@ -103,8 +103,8 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
         // Fallback: try the range slider via JS
         const tipSlider = page.locator('input[aria-label="Tip amount"]');
         if (await tipSlider.isVisible({ timeout: 1000 }).catch(() => false)) {
-          await tipSlider.evaluate((el: HTMLInputElement) => {
-            el.value = '0';
+          await tipSlider.evaluate((el) => {
+            (el as any).value = '0';
             el.dispatchEvent(new Event('input', { bubbles: true }));
             el.dispatchEvent(new Event('change', { bubbles: true }));
           });
@@ -209,7 +209,7 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
       const errorTexts = await page.locator(
         '[class*="error" i], [role="alert"], .hrt-field-error, [data-testid*="error" i], [class*="declined" i]'
       ).evaluateAll(els =>
-        els.filter(e => (e as HTMLElement).offsetParent !== null && e.textContent?.trim())
+        els.filter(e => (e as any).offsetParent !== null && e.textContent?.trim())
           .map(e => e.textContent!.trim().slice(0, 200))
       );
 
