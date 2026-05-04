@@ -80,6 +80,29 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     await page.goto(donateUrl, { waitUntil: 'networkidle', timeout: 30000 });
     await page.waitForTimeout(3000);
 
+    // --- Step 1b: Dismiss cookie consent / overlays ---
+    try {
+      // Transcend consent manager
+      const consentDiv = page.locator('#transcend-consent-manager');
+      if (await consentDiv.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await page.evaluate(() => {
+          const el = (globalThis as any).document.getElementById('transcend-consent-manager');
+          if (el) el.remove();
+        });
+        console.log('[donor] removed transcend consent overlay');
+      }
+      // Generic cookie banners
+      for (const sel of ['button:has-text("Accept")', 'button:has-text("Accept all")', 'button:has-text("Got it")', '[aria-label="Close"]']) {
+        const btn = page.locator(sel).first();
+        if (await btn.isVisible({ timeout: 500 }).catch(() => false)) {
+          await btn.click().catch(() => {});
+          console.log(`[donor] dismissed overlay via ${sel}`);
+          break;
+        }
+      }
+    } catch { /* no overlay */ }
+    await page.waitForTimeout(500);
+
     // --- Step 2: Fill donation amount ---
     console.log(`[donor] filling amount: $${amountUsd}`);
     const amountInput = page.locator('input#checkout-donation');
@@ -201,8 +224,16 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     // --- Step 8: Submit ---
     console.log('[donor] submitting donation...');
     const submitBtn = page.locator('button[type="submit"]:visible').first();
+    // Remove any overlays that might intercept clicks
+    await page.evaluate(() => {
+      const overlay = (globalThis as any).document.getElementById('transcend-consent-manager');
+      if (overlay) overlay.remove();
+    });
     await submitBtn.scrollIntoViewIfNeeded();
-    await submitBtn.click();
+    await submitBtn.click({ timeout: 10000 }).catch(async () => {
+      console.log('[donor] normal click blocked, trying force click');
+      await submitBtn.click({ force: true });
+    });
 
     // --- Step 9: Wait for URL change or confirmation ---
     console.log('[donor] waiting for confirmation...');
