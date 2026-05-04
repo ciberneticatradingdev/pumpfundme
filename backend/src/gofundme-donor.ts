@@ -66,10 +66,24 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
   const lastName = nameParts.slice(1).join(' ') || '';
 
   try {
-    browser = await chromium.launch({ headless: config.headlessBrowser });
+    browser = await chromium.launch({
+      headless: config.headlessBrowser,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+      ],
+    });
     const context = await browser.newContext({
       viewport: { width: 1280, height: 1200 },
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      // Anti-detection
+      locale: 'en-US',
+      timezoneId: 'America/New_York',
+    });
+    // Remove webdriver flag
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
     });
     const page = await context.newPage();
     page.setDefaultTimeout(30000);
