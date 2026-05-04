@@ -3,6 +3,7 @@ import { db } from './db';
 import { startMonitor } from './fee-monitor';
 import { startClaimer, claimSingleToken, claimAllTokens, getVaultBalances } from './fee-claimer';
 import { startPipeline, getPipelineStatus } from './pipeline';
+import { startDonationPipeline, processPendingDonations, triggerDonationForCampaign } from './donation-pipeline';
 import { config } from './config';
 
 function readBody(req: http.IncomingMessage): Promise<string> {
@@ -147,6 +148,79 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     return;
   }
 
+  // --- Donation endpoints ---
+
+  if (method === 'GET' && url === '/api/donations/pending') {
+    try {
+      const pending = await db.transaction.findMany({
+        where: { type: 'DONATION', status: 'PENDING' },
+        orderBy: { createdAt: 'desc' },
+        include: { campaign: { select: { id: true, name: true, goFundMeUrl: true } } },
+      });
+      send(res, 200, { donations: pending });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      send(res, 500, { error: message });
+    }
+    return;
+  }
+
+  if (method === 'POST' && url === '/api/donations/trigger') {
+    try {
+      const raw = await readBody(req);
+      const body = raw ? JSON.parse(raw) : {};
+      const { campaignId, amountUsd } = body as { campaignId?: string; amountUsd?: number };
+
+      if (!campaignId || !amountUsd) {
+        send(res, 400, { error: 'Provide campaignId and amountUsd' });
+        return;
+      }
+
+      const result = await triggerDonationForCampaign(campaignId, Number(amountUsd));
+      send(res, result.success ? 200 : 400, result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      send(res, 500, { error: message });
+    }
+    return;
+  }
+
+  if (method === 'GET' && url.startsWith('/api/donations/history')) {
+    try {
+      const parsed = new URL(url, `http://localhost:${config.port}`);
+      const limit = Math.min(parseInt(parsed.searchParams.get('limit') ?? '50', 10), 200);
+      const offset = parseInt(parsed.searchParams.get('offset') ?? '0', 10);
+
+      const [donations, total] = await Promise.all([
+        db.transaction.findMany({
+          where: { type: 'DONATION', status: 'CONFIRMED' },
+          orderBy: { createdAt: 'desc' },
+          take: limit,
+          skip: offset,
+          include: { campaign: { select: { id: true, name: true, goFundMeUrl: true } } },
+        }),
+        db.transaction.count({ where: { type: 'DONATION', status: 'CONFIRMED' } }),
+      ]);
+
+      send(res, 200, { donations, total, limit, offset });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      send(res, 500, { error: message });
+    }
+    return;
+  }
+
+  if (method === 'POST' && url === '/api/donations/process') {
+    try {
+      await processPendingDonations();
+      send(res, 200, { triggered: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      send(res, 500, { error: message });
+    }
+    return;
+  }
+
   send(res, 404, { error: 'Not found' });
 }
 
@@ -190,7 +264,10 @@ async function main(): Promise<void> {
   // Start SOL → USDT → Kolo pipeline (runs after claimer deposits SOL)
   await startPipeline();
 
-  console.log('[index] all services running (monitor + claimer + pipeline)');
+  // Start GoFundMe donation pipeline (runs after USDT arrives at Kolo)
+  await startDonationPipeline();
+
+  console.log('[index] all services running (monitor + claimer + pipeline + donation-pipeline)');
 }
 
 main().catch((err) => {
