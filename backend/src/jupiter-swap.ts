@@ -167,7 +167,6 @@ export async function swapSolToUsdt(amountLamports: number): Promise<SwapResult>
     await db.transaction.create({
       data: {
         type: 'SOL_SWAP',
-        campaignId: null as unknown as string, // pipeline-level, not campaign-specific
         amountSol,
         amountUsd: amountUsdt,
         txSignature,
@@ -180,7 +179,7 @@ export async function swapSolToUsdt(amountLamports: number): Promise<SwapResult>
           outputMint: config.usdtMint,
           outAmountRaw: outAmount,
         },
-      },
+      } as any,
     });
 
     await db.event.create({

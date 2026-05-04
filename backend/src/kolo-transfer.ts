@@ -130,7 +130,6 @@ export async function transferUsdtToKolo(amountRaw?: number): Promise<TransferRe
     await db.transaction.create({
       data: {
         type: 'USDT_TRANSFER',
-        campaignId: null as unknown as string,
         amountSol: 0,
         amountUsd: amountUsdt,
         txSignature,
@@ -141,7 +140,7 @@ export async function transferUsdtToKolo(amountRaw?: number): Promise<TransferRe
           mint: config.usdtMint,
           amountRaw,
         },
-      },
+      } as any,
     });
 
     await db.event.create({
