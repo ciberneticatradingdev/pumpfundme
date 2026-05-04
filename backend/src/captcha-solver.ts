@@ -11,7 +11,7 @@ const API_BASE = 'https://api.2captcha.com';
 const POLL_INTERVAL_MS = 5000;
 const MAX_WAIT_MS = 120000;
 
-export async function solveRecaptchaEnterprise(pageUrl: string, siteKey: string): Promise<CaptchaSolution> {
+export async function solveRecaptchaEnterprise(pageUrl: string, siteKey: string, action?: string): Promise<CaptchaSolution> {
   const apiKey = config.twoCaptchaApiKey;
 
   if (!apiKey) {
@@ -33,6 +33,7 @@ export async function solveRecaptchaEnterprise(pageUrl: string, siteKey: string)
           websiteURL: pageUrl,
           websiteKey: siteKey,
           isInvisible: true,
+          ...(action ? { enterprisePayload: { s: action, action } } : {}),
         },
       }),
     });

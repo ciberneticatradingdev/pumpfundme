@@ -173,7 +173,7 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     console.log('[donor] pre-submit screenshot taken');
 
     // --- Step 7b: Solve reCAPTCHA Enterprise before submit ---
-    const captchaResult = await solveRecaptchaEnterprise(page.url(), GOFUNDME_RECAPTCHA_SITEKEY);
+    const captchaResult = await solveRecaptchaEnterprise(page.url(), GOFUNDME_RECAPTCHA_SITEKEY, 'checkout');
     if (captchaResult.success) {
       console.log('[donor] injecting captcha token into page');
       /* eslint-disable @typescript-eslint/no-explicit-any */
