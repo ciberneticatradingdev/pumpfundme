@@ -74,8 +74,41 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     const page = await context.newPage();
     page.setDefaultTimeout(30000);
 
-    // --- Step 1: Navigate directly to donate page ---
+    // --- Step 0: Solve captcha BEFORE navigating ---
     const donateUrl = goFundMeUrl.replace(/\/$/, '') + '/donate?source=btn_donate';
+    console.log(`[donor] solving captcha before navigation...`);
+    const captchaResult = await solveRecaptchaEnterprise(donateUrl, GOFUNDME_RECAPTCHA_SITEKEY, 'checkout');
+    if (captchaResult.success) {
+      console.log(`[donor] captcha pre-solved (token ${captchaResult.token.length} chars)`);
+      // Inject init script that intercepts grecaptcha BEFORE page JS loads
+      await page.addInitScript((token: string) => {
+        // Create a fake grecaptcha.enterprise that returns our token
+        const g = globalThis as any;
+        const fakeEnterprise = {
+          ready: (cb: () => void) => cb(),
+          execute: () => Promise.resolve(token),
+          render: () => 'fake-widget-id',
+          getResponse: () => token,
+        };
+        // Set immediately
+        g.grecaptcha = { enterprise: fakeEnterprise, ready: (cb: () => void) => cb() };
+        // Defend against overwrites via defineProperty
+        Object.defineProperty(g, 'grecaptcha', {
+          get: () => ({ enterprise: fakeEnterprise, ready: (cb: () => void) => cb() }),
+          set: (val: any) => {
+            // Allow setting but keep our execute override
+            if (val?.enterprise) {
+              val.enterprise.execute = () => Promise.resolve(token);
+            }
+          },
+          configurable: true,
+        });
+      }, captchaResult.token);
+    } else {
+      console.warn(`[donor] captcha pre-solve failed: ${captchaResult.error}`);
+    }
+
+    // --- Step 1: Navigate to donate page ---
     console.log(`[donor] navigating to ${donateUrl}`);
     await page.goto(donateUrl, { waitUntil: 'networkidle', timeout: 30000 });
     await page.waitForTimeout(3000);
@@ -195,56 +228,6 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     screenshots.push(await screenshot(page, 'pre-submit'));
     console.log('[donor] pre-submit screenshot taken');
 
-    // --- Step 7b: Solve reCAPTCHA Enterprise before submit ---
-    const captchaResult = await solveRecaptchaEnterprise(page.url(), GOFUNDME_RECAPTCHA_SITEKEY, 'checkout');
-    if (captchaResult.success) {
-      console.log('[donor] injecting captcha token + patching grecaptcha.enterprise.execute');
-      await page.evaluate((token: string) => {
-        const g = (globalThis as any);
-        const doc = g.document;
-
-        // 1. Set textarea/input values
-        const textarea = doc.querySelector('textarea[name="g-recaptcha-response"]');
-        if (textarea) textarea.value = token;
-        let input = doc.querySelector('input[name="g-recaptcha-response"]');
-        if (!input) {
-          input = doc.createElement('input');
-          input.type = 'hidden';
-          input.name = 'g-recaptcha-response';
-          doc.forms[0]?.appendChild(input);
-        }
-        input.value = token;
-
-        // 2. Monkey-patch grecaptcha.enterprise.execute to return our token
-        // This is the KEY fix — GoFundMe calls execute() on submit
-        if (g.grecaptcha?.enterprise) {
-          g.grecaptcha.enterprise.execute = () => Promise.resolve(token);
-        }
-
-        // 3. Also patch window.___grecaptcha_cfg callbacks if they exist
-        if (g.___grecaptcha_cfg?.clients) {
-          for (const clientId of Object.keys(g.___grecaptcha_cfg.clients)) {
-            const client = g.___grecaptcha_cfg.clients[clientId];
-            // Walk the client tree to find callback functions
-            const walk = (obj: any, depth: number) => {
-              if (!obj || depth > 5) return;
-              for (const key of Object.keys(obj)) {
-                if (typeof obj[key] === 'function' && key.length <= 2) {
-                  // Potential callback — leave it
-                } else if (typeof obj[key] === 'object') {
-                  walk(obj[key], depth + 1);
-                }
-              }
-            };
-            walk(client, 0);
-          }
-        }
-      }, captchaResult.token);
-      console.log('[donor] grecaptcha.enterprise.execute patched');
-    } else {
-      console.warn(`[donor] captcha solve failed (${captchaResult.error}) — attempting submit anyway`);
-    }
-
     // Record the URL before submit
     const urlBeforeSubmit = page.url();
 
@@ -304,9 +287,8 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
       // Check body text for common payment failure indicators
       const bodyText = await page.locator('body').textContent() ?? '';
       const lowerBody = bodyText.toLowerCase();
-      if (lowerBody.includes('declined') || lowerBody.includes('insufficient') || lowerBody.includes('card was not accepted')) {
-        throw new Error('Card was declined');
-      }
+      // Only check for decline text in error elements, not the whole page body
+      // (GoFundMe page body contains 'declined' in generic text)
 
       // If no errors but URL didn't change, payment likely didn't go through
       throw new Error('Payment did not complete — URL unchanged after submit and no confirmation detected');
