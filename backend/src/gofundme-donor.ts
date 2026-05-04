@@ -80,30 +80,38 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     const captchaResult = await solveRecaptchaEnterprise(donateUrl, GOFUNDME_RECAPTCHA_SITEKEY, 'checkout');
     if (captchaResult.success) {
       console.log(`[donor] captcha pre-solved (token ${captchaResult.token.length} chars)`);
-      // Inject init script that intercepts grecaptcha BEFORE page JS loads
-      await page.addInitScript((token: string) => {
-        // Create a fake grecaptcha.enterprise that returns our token
-        const g = globalThis as any;
-        const fakeEnterprise = {
-          ready: (cb: () => void) => cb(),
-          execute: () => Promise.resolve(token),
-          render: () => 'fake-widget-id',
-          getResponse: () => token,
-        };
-        // Set immediately
-        g.grecaptcha = { enterprise: fakeEnterprise, ready: (cb: () => void) => cb() };
-        // Defend against overwrites via defineProperty
-        Object.defineProperty(g, 'grecaptcha', {
-          get: () => ({ enterprise: fakeEnterprise, ready: (cb: () => void) => cb() }),
-          set: (val: any) => {
-            // Allow setting but keep our execute override
-            if (val?.enterprise) {
-              val.enterprise.execute = () => Promise.resolve(token);
-            }
-          },
-          configurable: true,
+
+      // BLOCK the real reCAPTCHA scripts from loading entirely
+      // Serve a fake recaptcha that returns our token
+      await page.route('**/recaptcha/enterprise.js**', (route) => {
+        console.log('[donor] intercepted recaptcha enterprise.js — serving fake');
+        route.fulfill({
+          status: 200,
+          contentType: 'application/javascript',
+          body: `
+            window.grecaptcha = {
+              enterprise: {
+                ready: function(cb) { if (cb) cb(); },
+                execute: function() { return Promise.resolve("${captchaResult.token.replace(/"/g, '\\"')}"); },
+                render: function() { return 'fake-widget'; },
+                getResponse: function() { return "${captchaResult.token.replace(/"/g, '\\"')}"; },
+                reset: function() {},
+              },
+              ready: function(cb) { if (cb) cb(); },
+            };
+          `,
         });
-      }, captchaResult.token);
+      });
+
+      // Also block the anchor/bframe iframes
+      await page.route('**/recaptcha/enterprise/anchor**', (route) => {
+        route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body></body></html>' });
+      });
+      await page.route('**/recaptcha/enterprise/bframe**', (route) => {
+        route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body></body></html>' });
+      });
+
+      console.log('[donor] reCAPTCHA script routes set up');
     } else {
       console.warn(`[donor] captcha pre-solve failed: ${captchaResult.error}`);
     }
