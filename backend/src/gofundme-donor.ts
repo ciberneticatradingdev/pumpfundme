@@ -246,7 +246,7 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     });
 
     // --- Step 9: Wait for URL change or confirmation ---
-    console.log('[donor] waiting for confirmation...');
+    console.log('[donor] waiting for confirmation (up to 60s)...');
     let confirmationText = '';
     let donationSucceeded = false;
 
@@ -255,15 +255,15 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
       await page.waitForURL((url) => url.toString() !== urlBeforeSubmit, { timeout: 60000 });
       donationSucceeded = true;
       confirmationText = `Donation completed (redirected to: ${page.url()})`;
+      console.log(`[donor] URL changed to: ${page.url()}`);
     } catch {
-      // URL didn't change — check if there's an error
+      console.log(`[donor] URL unchanged after 60s. Current: ${page.url()}`);
     }
 
     await page.waitForTimeout(3000);
     screenshots.push(await screenshot(page, 'after-submit'));
 
     if (!donationSucceeded) {
-      // Check for specific success indicators
       const currentUrl = page.url();
       if (currentUrl.includes('thank') || currentUrl.includes('success') || currentUrl.includes('confirm')) {
         donationSucceeded = true;
@@ -272,25 +272,22 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     }
 
     if (!donationSucceeded) {
-      // Check for visible errors on the page
-      const errorTexts = await page.locator(
-        '[class*="error" i], [role="alert"], .hrt-field-error, [data-testid*="error" i], [class*="declined" i]'
-      ).evaluateAll(els =>
-        els.filter(e => (e as any).offsetParent !== null && e.textContent?.trim())
-          .map(e => e.textContent!.trim().slice(0, 200))
-      );
+      // Capture detailed page state for debugging
+      const debugInfo = await page.evaluate(() => {
+        const g = globalThis as any;
+        const doc = g.document;
+        const errors = Array.from(doc.querySelectorAll('[class*="error" i], [role="alert"], .hrt-field-error')).filter((e: any) => e.offsetParent !== null && e.textContent?.trim()).map((e: any) => e.textContent.trim().slice(0, 200));
+        const recaptchaVisible = !!doc.querySelector('iframe[src*="recaptcha"][style*="visibility: visible"], iframe[src*="recaptcha"]:not([style*="display: none"])');
+        const hasGrecaptcha = !!g.grecaptcha?.enterprise;
+        const submitDisabled = doc.querySelector('button[type="submit"]')?.disabled;
+        return { errors, recaptchaVisible, hasGrecaptcha, submitDisabled, url: g.location.href };
+      });
+      console.log(`[donor] DEBUG after submit: ${JSON.stringify(debugInfo)}`);
 
-      if (errorTexts.length > 0) {
-        throw new Error(`Payment errors: ${errorTexts.join(' | ')}`);
+      if (debugInfo.errors.length > 0) {
+        throw new Error(`Payment errors: ${debugInfo.errors.join(' | ')}`);
       }
 
-      // Check body text for common payment failure indicators
-      const bodyText = await page.locator('body').textContent() ?? '';
-      const lowerBody = bodyText.toLowerCase();
-      // Only check for decline text in error elements, not the whole page body
-      // (GoFundMe page body contains 'declined' in generic text)
-
-      // If no errors but URL didn't change, payment likely didn't go through
       throw new Error('Payment did not complete — URL unchanged after submit and no confirmation detected');
     }
 
