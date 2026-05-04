@@ -33,11 +33,11 @@ async function screenshot(page: Page, label: string): Promise<string> {
  * GoFundMe flow (as of 2026-05):
  * 1. Navigate to /donate page
  * 2. Fill donation amount (input#checkout-donation)
- * 3. Set tip to $0 (slider + custom tip input)
- * 4. Select "Credit or debit" radio (input#add-card)
- * 5. Fill email, first/last name, card details (all direct DOM, no iframes)
+ * 3. Set tip to $0 via "Enter custom tip" button → number input
+ * 4. Select "Credit or debit" via label click (not radio force-click)
+ * 5. Fill email, first/last name, card details (all direct DOM, Braintree not Stripe)
  * 6. Submit donation
- * 7. Wait for confirmation
+ * 7. Verify URL changes to thank-you/confirmation page
  */
 export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): Promise<DonationResult> {
   const { koloCardNumber, koloCardExpiry, koloCardCvc, koloCardName, koloCardZip, koloCardEmail } = config;
@@ -65,7 +65,7 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
   try {
     browser = await chromium.launch({ headless: config.headlessBrowser });
     const context = await browser.newContext({
-      viewport: { width: 1280, height: 900 },
+      viewport: { width: 1280, height: 1200 },
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     });
     const page = await context.newPage();
@@ -75,7 +75,7 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     const donateUrl = goFundMeUrl.replace(/\/$/, '') + '/donate?source=btn_donate';
     console.log(`[donor] navigating to ${donateUrl}`);
     await page.goto(donateUrl, { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
 
     // --- Step 2: Fill donation amount ---
     console.log(`[donor] filling amount: $${amountUsd}`);
@@ -88,18 +88,27 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     // --- Step 3: Set tip to $0 ---
     console.log('[donor] setting tip to $0');
     try {
-      const tipSlider = page.locator('input[aria-label="Tip amount"]');
-      if (await tipSlider.isVisible({ timeout: 2000 })) {
-        await tipSlider.fill('0');
-      }
+      // Click "Enter custom tip" to get the number input
       const customTipBtn = page.locator('button:has-text("Enter custom tip")');
-      if (await customTipBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+      if (await customTipBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
         await customTipBtn.click();
-        await page.waitForTimeout(300);
-        const tipInput = page.locator('input[name*="tip" i], input[id*="tip" i]').first();
-        if (await tipInput.isVisible({ timeout: 1000 }).catch(() => false)) {
-          await tipInput.click({ clickCount: 3 });
-          await tipInput.fill('0');
+        await page.waitForTimeout(500);
+      }
+      // Fill the tip number input with 0
+      const tipInput = page.locator('input[id*="tip" i], input[name*="tip" i]').first();
+      if (await tipInput.isVisible({ timeout: 1500 }).catch(() => false)) {
+        await tipInput.fill('0');
+        console.log('[donor] tip set to $0');
+      } else {
+        // Fallback: try the range slider via JS
+        const tipSlider = page.locator('input[aria-label="Tip amount"]');
+        if (await tipSlider.isVisible({ timeout: 1000 }).catch(() => false)) {
+          await tipSlider.evaluate((el: HTMLInputElement) => {
+            el.value = '0';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          });
+          console.log('[donor] tip slider set to 0 via JS');
         }
       }
     } catch {
@@ -107,25 +116,31 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     }
     await page.waitForTimeout(500);
 
-    // --- Step 4: Select Credit or Debit ---
+    // --- Step 4: Select Credit or Debit via label click ---
     console.log('[donor] selecting credit/debit card');
-    const cardRadio = page.locator('input#add-card');
-    await cardRadio.click({ force: true });
-    await page.waitForTimeout(2000);
+    const cardLabel = page.locator('label:has-text("Credit or debit")');
+    if (await cardLabel.isVisible({ timeout: 3000 })) {
+      await cardLabel.click();
+    } else {
+      // Fallback to radio input
+      await page.locator('input#add-card').click({ force: true });
+    }
+    await page.waitForTimeout(2500);
 
     // --- Step 5: Fill contact info ---
     console.log('[donor] filling email + name');
+    await page.locator('input#email-address').waitFor({ state: 'visible', timeout: 5000 });
     await page.locator('input#email-address').fill(koloCardEmail);
     await page.locator('input#first-name').fill(firstName);
     await page.locator('input#last-name').fill(lastName);
 
-    // --- Step 6: Fill card details (direct DOM, NOT iframes) ---
+    // --- Step 6: Fill card details (direct DOM, Braintree) ---
     console.log('[donor] filling card details');
     await page.locator('input#card-number').fill(koloCardNumber);
     await page.locator('input#card-expiration').fill(koloCardExpiry);
     await page.locator('input#card-cvv').fill(koloCardCvc);
 
-    // Card name (sometimes pre-filled from first/last)
+    // Card name (may be pre-filled from first/last)
     const cardNameInput = page.locator('input#card-name');
     if (await cardNameInput.isVisible({ timeout: 1000 }).catch(() => false)) {
       const currentVal = await cardNameInput.inputValue();
@@ -154,49 +169,79 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     screenshots.push(await screenshot(page, 'pre-submit'));
     console.log('[donor] pre-submit screenshot taken');
 
+    // Record the URL before submit
+    const urlBeforeSubmit = page.url();
+
     // --- Step 8: Submit ---
     console.log('[donor] submitting donation...');
     const submitBtn = page.locator('button[type="submit"]:visible').first();
     await submitBtn.scrollIntoViewIfNeeded();
     await submitBtn.click();
 
-    // --- Step 9: Wait for confirmation ---
+    // --- Step 9: Wait for URL change or confirmation ---
     console.log('[donor] waiting for confirmation...');
     let confirmationText = '';
+    let donationSucceeded = false;
+
+    // Wait up to 60s for URL to change (payment processing)
     try {
-      // GoFundMe redirects to a thank-you/confirmation page
-      await page.waitForURL(/.*(?:thank|confirm|success|receipt).*/i, { timeout: 45000 }).catch(() => {});
-      await page.waitForTimeout(3000);
-
-      const thankYou = page.locator('h1, h2, [class*="thank" i], [class*="confirm" i], [data-testid*="confirm" i]').first();
-      if (await thankYou.isVisible({ timeout: 5000 }).catch(() => false)) {
-        confirmationText = (await thankYou.textContent()) ?? '';
-      }
-
-      if (!confirmationText) {
-        confirmationText = `Donation completed (URL: ${page.url()})`;
-      }
+      await page.waitForURL((url) => url.toString() !== urlBeforeSubmit, { timeout: 60000 });
+      donationSucceeded = true;
+      confirmationText = `Donation completed (redirected to: ${page.url()})`;
     } catch {
-      // Check if page URL suggests success
-      const url = page.url();
-      if (url.includes('thank') || url.includes('confirm') || url.includes('success')) {
-        confirmationText = `Donation completed (URL: ${url})`;
-      } else {
-        // Check for error messages on page
-        const errorEl = page.locator('[class*="error" i], [role="alert"]').first();
-        const errorText = await errorEl.textContent().catch(() => '');
-        if (errorText) {
-          screenshots.push(await screenshot(page, 'error-submit'));
-          throw new Error(`Payment error: ${errorText.trim().slice(0, 200)}`);
-        }
-        screenshots.push(await screenshot(page, 'error-no-confirmation'));
-        throw new Error('No confirmation detected after submission');
+      // URL didn't change — check if there's an error
+    }
+
+    await page.waitForTimeout(3000);
+    screenshots.push(await screenshot(page, 'after-submit'));
+
+    if (!donationSucceeded) {
+      // Check for specific success indicators
+      const currentUrl = page.url();
+      if (currentUrl.includes('thank') || currentUrl.includes('success') || currentUrl.includes('confirm')) {
+        donationSucceeded = true;
+        confirmationText = `Donation completed (URL: ${currentUrl})`;
       }
     }
 
-    screenshots.push(await screenshot(page, 'confirmation'));
-    console.log(`[donor] ✅ donation confirmed: ${confirmationText.slice(0, 100)}`);
+    if (!donationSucceeded) {
+      // Check for visible errors on the page
+      const errorTexts = await page.locator(
+        '[class*="error" i], [role="alert"], .hrt-field-error, [data-testid*="error" i], [class*="declined" i]'
+      ).evaluateAll(els =>
+        els.filter(e => (e as HTMLElement).offsetParent !== null && e.textContent?.trim())
+          .map(e => e.textContent!.trim().slice(0, 200))
+      );
 
+      if (errorTexts.length > 0) {
+        throw new Error(`Payment errors: ${errorTexts.join(' | ')}`);
+      }
+
+      // Check body text for common payment failure indicators
+      const bodyText = await page.locator('body').textContent() ?? '';
+      const lowerBody = bodyText.toLowerCase();
+      if (lowerBody.includes('declined') || lowerBody.includes('insufficient') || lowerBody.includes('card was not accepted')) {
+        throw new Error('Card was declined');
+      }
+
+      // If no errors but URL didn't change, payment likely didn't go through
+      throw new Error('Payment did not complete — URL unchanged after submit and no confirmation detected');
+    }
+
+    // Try to get better confirmation text
+    if (donationSucceeded) {
+      try {
+        const heading = page.locator('h1, h2').first();
+        if (await heading.isVisible({ timeout: 3000 }).catch(() => false)) {
+          const headingText = await heading.textContent();
+          if (headingText && (headingText.toLowerCase().includes('thank') || headingText.toLowerCase().includes('success'))) {
+            confirmationText = headingText.trim();
+          }
+        }
+      } catch { /* keep existing confirmationText */ }
+    }
+
+    console.log(`[donor] ✅ donation confirmed: ${confirmationText.slice(0, 100)}`);
     return { success: true, donationAmountUsd: amountUsd, goFundMeUrl, screenshotPaths: screenshots, confirmationText };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
