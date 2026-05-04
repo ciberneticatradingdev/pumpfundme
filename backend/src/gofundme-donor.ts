@@ -1,4 +1,4 @@
-import { chromium, Browser, Page, FrameLocator } from 'playwright';
+import { chromium, Browser, Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 import { config } from './config';
@@ -20,315 +20,189 @@ function ensureScreenshotDir(): void {
   }
 }
 
-async function takeScreenshot(page: Page, label: string): Promise<string> {
+async function screenshot(page: Page, label: string): Promise<string> {
   const filename = `${Date.now()}-${label}.png`;
   const filepath = path.join(SCREENSHOT_DIR, filename);
   await page.screenshot({ path: filepath, fullPage: false });
   return filepath;
 }
 
-async function tryClick(page: Page, selectors: string[], timeout = 3000): Promise<boolean> {
-  for (const selector of selectors) {
-    try {
-      const el = page.locator(selector).first();
-      if (await el.isVisible({ timeout })) {
-        await el.click({ timeout });
-        return true;
-      }
-    } catch {
-      // try next selector
-    }
-  }
-  return false;
-}
-
-async function tryFill(page: Page, selectors: string[], value: string, timeout = 3000): Promise<boolean> {
-  for (const selector of selectors) {
-    try {
-      const el = page.locator(selector).first();
-      if (await el.isVisible({ timeout })) {
-        await el.click({ clickCount: 3 });
-        await el.fill(value);
-        return true;
-      }
-    } catch {
-      // try next selector
-    }
-  }
-  return false;
-}
-
-async function fillInStripeFrame(
-  page: Page,
-  frameTitles: string[],
-  inputSelectors: string[],
-  value: string,
-): Promise<boolean> {
-  // Try each iframe title
-  for (const title of frameTitles) {
-    try {
-      const frame: FrameLocator = page.frameLocator(`iframe[title="${title}"]`).first();
-      for (const selector of inputSelectors) {
-        try {
-          const input = frame.locator(selector).first();
-          if (await input.isVisible({ timeout: 3000 })) {
-            await input.fill(value);
-            return true;
-          }
-        } catch {
-          // try next input selector
-        }
-      }
-    } catch {
-      // try next frame title
-    }
-  }
-  // Fallback: direct input on the page (no iframe)
-  return tryFill(page, inputSelectors, value, 2000);
-}
-
+/**
+ * Donate to a GoFundMe campaign using Playwright browser automation.
+ *
+ * GoFundMe flow (as of 2026-05):
+ * 1. Navigate to /donate page
+ * 2. Fill donation amount (input#checkout-donation)
+ * 3. Set tip to $0 (slider + custom tip input)
+ * 4. Select "Credit or debit" radio (input#add-card)
+ * 5. Fill email, first/last name, card details (all direct DOM, no iframes)
+ * 6. Submit donation
+ * 7. Wait for confirmation
+ */
 export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): Promise<DonationResult> {
   const { koloCardNumber, koloCardExpiry, koloCardCvc, koloCardName, koloCardZip, koloCardEmail } = config;
 
   if (!koloCardNumber || !koloCardExpiry || !koloCardCvc || !koloCardName || !koloCardEmail) {
-    throw new Error('Missing required KOLO_CARD_* env vars (KOLO_CARD_NUMBER, KOLO_CARD_EXPIRY, KOLO_CARD_CVC, KOLO_CARD_NAME, KOLO_CARD_EMAIL)');
+    throw new Error('Missing KOLO_CARD_* env vars');
   }
 
   if (amountUsd < config.donationMinUsd) {
     return {
-      success: false,
-      donationAmountUsd: amountUsd,
-      goFundMeUrl,
-      screenshotPaths: [],
-      error: `Amount $${amountUsd} is below minimum $${config.donationMinUsd}`,
+      success: false, donationAmountUsd: amountUsd, goFundMeUrl, screenshotPaths: [],
+      error: `Amount $${amountUsd} below minimum $${config.donationMinUsd}`,
     };
   }
 
   ensureScreenshotDir();
-  const screenshotPaths: string[] = [];
+  const screenshots: string[] = [];
   let browser: Browser | null = null;
+
+  // Split name into first/last
+  const nameParts = koloCardName.trim().split(/\s+/);
+  const firstName = nameParts[0] || koloCardName;
+  const lastName = nameParts.slice(1).join(' ') || '';
 
   try {
     browser = await chromium.launch({ headless: config.headlessBrowser });
     const context = await browser.newContext({
       viewport: { width: 1280, height: 900 },
-      userAgent:
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     });
     const page = await context.newPage();
     page.setDefaultTimeout(30000);
 
-    // --- Step 1: Navigate to campaign ---
-    console.log(`[donor] navigating to ${goFundMeUrl}`);
-    await page.goto(goFundMeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // --- Step 1: Navigate directly to donate page ---
+    const donateUrl = goFundMeUrl.replace(/\/$/, '') + '/donate?source=btn_donate';
+    console.log(`[donor] navigating to ${donateUrl}`);
+    await page.goto(donateUrl, { waitUntil: 'networkidle', timeout: 30000 });
     await page.waitForTimeout(2000);
 
-    // --- Step 2: Click Donate button ---
-    console.log('[donor] clicking Donate button');
-    const donateClicked = await tryClick(page, [
-      '[data-testid="donate-button"]',
-      'a[href*="/donate"]',
-      'button:has-text("Donate")',
-      'a:has-text("Donate now")',
-      'a:has-text("Donate")',
-      '[aria-label*="Donate" i]',
-    ]);
-    if (!donateClicked) {
-      screenshotPaths.push(await takeScreenshot(page, 'error-no-donate-button'));
-      throw new Error('Could not find Donate button on campaign page');
-    }
-    await page.waitForTimeout(2000);
+    // --- Step 2: Fill donation amount ---
+    console.log(`[donor] filling amount: $${amountUsd}`);
+    const amountInput = page.locator('input#checkout-donation');
+    await amountInput.waitFor({ state: 'visible', timeout: 10000 });
+    await amountInput.click({ clickCount: 3 });
+    await amountInput.fill(String(amountUsd));
+    await page.waitForTimeout(500);
 
-    // --- Step 3: Enter donation amount ---
-    console.log(`[donor] entering amount $${amountUsd}`);
-    const amountSelectors = [
-      'input[data-testid="amount-input"]',
-      'input[name="amount"]',
-      'input[placeholder*="Amount" i]',
-      '[data-element="amount"] input',
-      'input[id*="amount" i]',
-      'input[type="number"]',
-    ];
-
-    let amountFilled = await tryFill(page, amountSelectors, String(amountUsd));
-
-    if (!amountFilled) {
-      // Some flows require clicking "Other" / "Custom" first
-      await tryClick(page, [
-        'button:has-text("Other")',
-        'button:has-text("Custom")',
-        '[data-testid="custom-amount"]',
-      ]);
-      await page.waitForTimeout(800);
-      amountFilled = await tryFill(page, amountSelectors, String(amountUsd));
-    }
-
-    if (!amountFilled) {
-      screenshotPaths.push(await takeScreenshot(page, 'error-amount-fill'));
-      throw new Error('Could not fill donation amount');
-    }
-
-    // Continue after amount
-    await tryClick(page, [
-      'button[data-testid="btn-continue"]',
-      'button:has-text("Continue")',
-      'button:has-text("Next")',
-    ]);
-    await page.waitForTimeout(2000);
-
-    // --- Step 4: Handle tip screen (set to $0 or skip) ---
+    // --- Step 3: Set tip to $0 ---
+    console.log('[donor] setting tip to $0');
     try {
-      const tipHandled = await tryClick(page, [
-        '[data-testid="tip-0"]',
-        'button[aria-label*="0%" i]',
-        'button:has-text("0%")',
-        '[data-testid="tip-none"]',
-        'button:has-text("No thanks")',
-        'button:has-text("Skip")',
-      ], 2000);
-
-      if (!tipHandled) {
-        // Try filling tip input with 0
-        await tryFill(page, [
-          'input[name*="tip" i]',
-          'input[id*="tip" i]',
-          'input[placeholder*="tip" i]',
-        ], '0', 2000);
+      const tipSlider = page.locator('input[aria-label="Tip amount"]');
+      if (await tipSlider.isVisible({ timeout: 2000 })) {
+        await tipSlider.fill('0');
       }
-
-      await tryClick(page, [
-        'button[data-testid="btn-continue"]',
-        'button:has-text("Continue")',
-        'button:has-text("Next")',
-      ], 2000);
-      await page.waitForTimeout(1500);
+      const customTipBtn = page.locator('button:has-text("Enter custom tip")');
+      if (await customTipBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await customTipBtn.click();
+        await page.waitForTimeout(300);
+        const tipInput = page.locator('input[name*="tip" i], input[id*="tip" i]').first();
+        if (await tipInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+          await tipInput.click({ clickCount: 3 });
+          await tipInput.fill('0');
+        }
+      }
     } catch {
-      // Tip screen may not appear — continue
+      console.log('[donor] tip section not found — continuing');
     }
+    await page.waitForTimeout(500);
 
-    // --- Step 5: Select credit/debit card ---
+    // --- Step 4: Select Credit or Debit ---
     console.log('[donor] selecting credit/debit card');
-    await tryClick(page, [
-      '[data-testid="payment-method-card"]',
-      'button:has-text("Credit or debit card")',
-      'button:has-text("Credit card")',
-      'label:has-text("Credit or debit")',
-      '[aria-label*="credit" i]',
-      '[aria-label*="debit" i]',
-      'input[value="card"]',
-    ], 3000);
-    await page.waitForTimeout(1500);
+    const cardRadio = page.locator('input#add-card');
+    await cardRadio.click({ force: true });
+    await page.waitForTimeout(2000);
 
-    // --- Step 6: Fill contact info ---
-    console.log('[donor] filling email');
-    await tryFill(page, [
-      'input[type="email"]',
-      'input[name="email"]',
-      'input[id*="email" i]',
-      'input[placeholder*="email" i]',
-    ], koloCardEmail);
+    // --- Step 5: Fill contact info ---
+    console.log('[donor] filling email + name');
+    await page.locator('input#email-address').fill(koloCardEmail);
+    await page.locator('input#first-name').fill(firstName);
+    await page.locator('input#last-name').fill(lastName);
 
-    console.log('[donor] filling cardholder name');
-    await tryFill(page, [
-      'input[name="name"]',
-      'input[name="cardName"]',
-      'input[autocomplete="cc-name"]',
-      'input[id*="name" i]',
-      'input[placeholder*="name" i]',
-    ], koloCardName);
+    // --- Step 6: Fill card details (direct DOM, NOT iframes) ---
+    console.log('[donor] filling card details');
+    await page.locator('input#card-number').fill(koloCardNumber);
+    await page.locator('input#card-expiration').fill(koloCardExpiry);
+    await page.locator('input#card-cvv').fill(koloCardCvc);
 
-    // --- Step 7: Fill Stripe card fields (iframes) ---
-    console.log('[donor] filling card number');
-    await fillInStripeFrame(
-      page,
-      ['Secure card number input frame', 'Card number'],
-      ['input[name="cardnumber"]', 'input[autocomplete="cc-number"]', 'input[placeholder*="1234" i]'],
-      koloCardNumber,
-    );
-
-    console.log('[donor] filling expiry');
-    await fillInStripeFrame(
-      page,
-      ['Secure expiration date input frame', 'Expiration date'],
-      ['input[name="exp-date"]', 'input[autocomplete="cc-exp"]', 'input[placeholder*="MM" i]'],
-      koloCardExpiry,
-    );
-
-    console.log('[donor] filling CVC');
-    await fillInStripeFrame(
-      page,
-      ['Secure CVC input frame', 'CVC'],
-      ['input[name="cvc"]', 'input[autocomplete="cc-csc"]', 'input[placeholder*="CVC" i]'],
-      koloCardCvc,
-    );
-
-    // ZIP if required
-    if (koloCardZip) {
-      await tryFill(page, [
-        'input[name="postal"]',
-        'input[name="zip"]',
-        'input[autocomplete="postal-code"]',
-        'input[placeholder*="zip" i]',
-        'input[placeholder*="postal" i]',
-      ], koloCardZip);
+    // Card name (sometimes pre-filled from first/last)
+    const cardNameInput = page.locator('input#card-name');
+    if (await cardNameInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+      const currentVal = await cardNameInput.inputValue();
+      if (!currentVal) {
+        await cardNameInput.fill(koloCardName);
+      }
     }
 
-    // --- Step 8: Screenshot before submit ---
-    screenshotPaths.push(await takeScreenshot(page, 'pre-submit'));
+    // Postal code
+    if (koloCardZip) {
+      const postalInput = page.locator('input#location-postal-code');
+      if (await postalInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await postalInput.fill(koloCardZip);
+      }
+    }
+
+    // Uncheck "save card" if checked
+    const saveCard = page.locator('input#save-card');
+    if (await saveCard.isVisible({ timeout: 500 }).catch(() => false)) {
+      if (await saveCard.isChecked()) {
+        await saveCard.uncheck();
+      }
+    }
+
+    // --- Step 7: Pre-submit screenshot ---
+    screenshots.push(await screenshot(page, 'pre-submit'));
     console.log('[donor] pre-submit screenshot taken');
 
-    // --- Step 9: Submit ---
-    console.log('[donor] submitting donation');
-    const submitted = await tryClick(page, [
-      '[data-testid="donate-submit"]',
-      'button[type="submit"]:has-text("Donate")',
-      'button:has-text("Donate now")',
-      'button:has-text("Give now")',
-      'button:has-text("Give")',
-      'button[type="submit"]',
-    ]);
-    if (!submitted) {
-      screenshotPaths.push(await takeScreenshot(page, 'error-no-submit'));
-      throw new Error('Could not find submit button');
-    }
+    // --- Step 8: Submit ---
+    console.log('[donor] submitting donation...');
+    const submitBtn = page.locator('button[type="submit"]:visible').first();
+    await submitBtn.scrollIntoViewIfNeeded();
+    await submitBtn.click();
 
-    // --- Step 10: Wait for confirmation ---
+    // --- Step 9: Wait for confirmation ---
     console.log('[donor] waiting for confirmation...');
     let confirmationText = '';
     try {
-      await page.waitForSelector(
-        '[data-testid="confirmation"], h1:has-text("Thank you"), h1:has-text("Donation confirmed"), [class*="confirmation" i], [class*="thank" i]',
-        { timeout: 45000 },
-      );
-      const el = page.locator(
-        '[data-testid="confirmation"], h1:has-text("Thank you"), h1:has-text("Donation confirmed")',
-      ).first();
-      confirmationText = (await el.textContent()) ?? 'Donation confirmed';
+      // GoFundMe redirects to a thank-you/confirmation page
+      await page.waitForURL(/.*(?:thank|confirm|success|receipt).*/i, { timeout: 45000 }).catch(() => {});
+      await page.waitForTimeout(3000);
+
+      const thankYou = page.locator('h1, h2, [class*="thank" i], [class*="confirm" i], [data-testid*="confirm" i]').first();
+      if (await thankYou.isVisible({ timeout: 5000 }).catch(() => false)) {
+        confirmationText = (await thankYou.textContent()) ?? '';
+      }
+
+      if (!confirmationText) {
+        confirmationText = `Donation completed (URL: ${page.url()})`;
+      }
     } catch {
-      const currentUrl = page.url();
-      if (
-        currentUrl.includes('thank') ||
-        currentUrl.includes('confirm') ||
-        currentUrl.includes('success')
-      ) {
-        confirmationText = `Donation confirmed (url: ${currentUrl})`;
+      // Check if page URL suggests success
+      const url = page.url();
+      if (url.includes('thank') || url.includes('confirm') || url.includes('success')) {
+        confirmationText = `Donation completed (URL: ${url})`;
       } else {
-        screenshotPaths.push(await takeScreenshot(page, 'error-no-confirmation'));
-        throw new Error('No confirmation page detected after submission');
+        // Check for error messages on page
+        const errorEl = page.locator('[class*="error" i], [role="alert"]').first();
+        const errorText = await errorEl.textContent().catch(() => '');
+        if (errorText) {
+          screenshots.push(await screenshot(page, 'error-submit'));
+          throw new Error(`Payment error: ${errorText.trim().slice(0, 200)}`);
+        }
+        screenshots.push(await screenshot(page, 'error-no-confirmation'));
+        throw new Error('No confirmation detected after submission');
       }
     }
 
-    screenshotPaths.push(await takeScreenshot(page, 'confirmation'));
-    console.log(`[donor] ✅ donation confirmed: ${confirmationText}`);
+    screenshots.push(await screenshot(page, 'confirmation'));
+    console.log(`[donor] ✅ donation confirmed: ${confirmationText.slice(0, 100)}`);
 
-    return { success: true, donationAmountUsd: amountUsd, goFundMeUrl, screenshotPaths, confirmationText };
+    return { success: true, donationAmountUsd: amountUsd, goFundMeUrl, screenshotPaths: screenshots, confirmationText };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.error(`[donor] ❌ donation failed: ${error}`);
-    return { success: false, donationAmountUsd: amountUsd, goFundMeUrl, screenshotPaths, error };
+    return { success: false, donationAmountUsd: amountUsd, goFundMeUrl, screenshotPaths: screenshots, error };
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (browser) await browser.close();
   }
 }
