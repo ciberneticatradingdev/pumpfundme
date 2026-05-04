@@ -198,13 +198,14 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     // --- Step 7b: Solve reCAPTCHA Enterprise before submit ---
     const captchaResult = await solveRecaptchaEnterprise(page.url(), GOFUNDME_RECAPTCHA_SITEKEY, 'checkout');
     if (captchaResult.success) {
-      console.log('[donor] injecting captcha token into page');
-      /* eslint-disable @typescript-eslint/no-explicit-any */
+      console.log('[donor] injecting captcha token + patching grecaptcha.enterprise.execute');
       await page.evaluate((token: string) => {
-        const doc = (globalThis as any).document;
+        const g = (globalThis as any);
+        const doc = g.document;
+
+        // 1. Set textarea/input values
         const textarea = doc.querySelector('textarea[name="g-recaptcha-response"]');
         if (textarea) textarea.value = token;
-
         let input = doc.querySelector('input[name="g-recaptcha-response"]');
         if (!input) {
           input = doc.createElement('input');
@@ -213,7 +214,33 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
           doc.forms[0]?.appendChild(input);
         }
         input.value = token;
+
+        // 2. Monkey-patch grecaptcha.enterprise.execute to return our token
+        // This is the KEY fix — GoFundMe calls execute() on submit
+        if (g.grecaptcha?.enterprise) {
+          g.grecaptcha.enterprise.execute = () => Promise.resolve(token);
+        }
+
+        // 3. Also patch window.___grecaptcha_cfg callbacks if they exist
+        if (g.___grecaptcha_cfg?.clients) {
+          for (const clientId of Object.keys(g.___grecaptcha_cfg.clients)) {
+            const client = g.___grecaptcha_cfg.clients[clientId];
+            // Walk the client tree to find callback functions
+            const walk = (obj: any, depth: number) => {
+              if (!obj || depth > 5) return;
+              for (const key of Object.keys(obj)) {
+                if (typeof obj[key] === 'function' && key.length <= 2) {
+                  // Potential callback — leave it
+                } else if (typeof obj[key] === 'object') {
+                  walk(obj[key], depth + 1);
+                }
+              }
+            };
+            walk(client, 0);
+          }
+        }
       }, captchaResult.token);
+      console.log('[donor] grecaptcha.enterprise.execute patched');
     } else {
       console.warn(`[donor] captcha solve failed (${captchaResult.error}) — attempting submit anyway`);
     }
