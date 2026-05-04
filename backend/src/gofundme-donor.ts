@@ -2,6 +2,9 @@ import { chromium, Browser, Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 import { config } from './config';
+import { solveRecaptchaEnterprise } from './captcha-solver';
+
+const GOFUNDME_RECAPTCHA_SITEKEY = '6LdRSOIUAAAAACEGtT2MgSZzB7Y97gitstHArN8P';
 
 export interface DonationResult {
   success: boolean;
@@ -168,6 +171,27 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     // --- Step 7: Pre-submit screenshot ---
     screenshots.push(await screenshot(page, 'pre-submit'));
     console.log('[donor] pre-submit screenshot taken');
+
+    // --- Step 7b: Solve reCAPTCHA Enterprise before submit ---
+    const captchaResult = await solveRecaptchaEnterprise(page.url(), GOFUNDME_RECAPTCHA_SITEKEY);
+    if (captchaResult.success) {
+      console.log('[donor] injecting captcha token into page');
+      await page.evaluate((token) => {
+        const textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+        if (textarea) (textarea as any).value = token;
+
+        let input = document.querySelector('input[name="g-recaptcha-response"]') as any;
+        if (!input) {
+          input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'g-recaptcha-response';
+          (document.forms[0] as any)?.appendChild(input);
+        }
+        input.value = token;
+      }, captchaResult.token);
+    } else {
+      console.warn(`[donor] captcha solve failed (${captchaResult.error}) — attempting submit anyway`);
+    }
 
     // Record the URL before submit
     const urlBeforeSubmit = page.url();

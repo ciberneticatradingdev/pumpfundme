@@ -31,4 +31,5 @@ export const config = {
   donationIntervalMs: parseInt(process.env.DONATION_INTERVAL_MS ?? '600000', 10),
   donationMinUsd: parseFloat(process.env.DONATION_MIN_USD ?? '5'),
   headlessBrowser: process.env.HEADLESS_BROWSER !== 'false',
+  twoCaptchaApiKey: process.env.TWOCAPTCHA_API_KEY ?? '',
 } as const;
