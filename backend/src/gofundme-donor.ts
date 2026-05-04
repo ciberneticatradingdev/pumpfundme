@@ -176,16 +176,18 @@ export async function donateToGoFundMe(goFundMeUrl: string, amountUsd: number): 
     const captchaResult = await solveRecaptchaEnterprise(page.url(), GOFUNDME_RECAPTCHA_SITEKEY);
     if (captchaResult.success) {
       console.log('[donor] injecting captcha token into page');
-      await page.evaluate((token) => {
-        const textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
-        if (textarea) (textarea as any).value = token;
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      await page.evaluate((token: string) => {
+        const doc = (globalThis as any).document;
+        const textarea = doc.querySelector('textarea[name="g-recaptcha-response"]');
+        if (textarea) textarea.value = token;
 
-        let input = document.querySelector('input[name="g-recaptcha-response"]') as any;
+        let input = doc.querySelector('input[name="g-recaptcha-response"]');
         if (!input) {
-          input = document.createElement('input');
+          input = doc.createElement('input');
           input.type = 'hidden';
           input.name = 'g-recaptcha-response';
-          (document.forms[0] as any)?.appendChild(input);
+          doc.forms[0]?.appendChild(input);
         }
         input.value = token;
       }, captchaResult.token);
