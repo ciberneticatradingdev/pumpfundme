@@ -13,9 +13,9 @@ function checkIsAdmin(wallet: string): boolean {
 }
 
 interface PipelineStatus {
-  solBalance?: number;
-  usdtBalance?: number;
-  koloUsdtBalance?: number;
+  solBalanceHrA44R?: number;
+  usdtBalanceHrA44R?: number;
+  usdtBalanceKolo?: number;
   pendingSwapSol?: number;
   lastSwapAt?: string | null;
   lastTransferAt?: string | null;
@@ -79,7 +79,7 @@ function PipelineStatusCard({ walletAddress }: { walletAddress: string }) {
                 SOL in HrA44R
               </div>
               <div className="mt-2 font-mono text-2xl font-bold text-emerald-700">
-                {status.solBalance != null ? status.solBalance.toFixed(4) : "—"} SOL
+                {status.solBalanceHrA44R != null ? status.solBalanceHrA44R.toFixed(4) : "—"} SOL
               </div>
               <div className="mt-1 text-[11px] text-emerald-400">Fee collection wallet</div>
             </div>
@@ -88,7 +88,7 @@ function PipelineStatusCard({ walletAddress }: { walletAddress: string }) {
                 USDT in HrA44R
               </div>
               <div className="mt-2 font-mono text-2xl font-bold text-blue-700">
-                ${status.usdtBalance != null ? status.usdtBalance.toFixed(2) : "—"}
+                ${status.usdtBalanceHrA44R != null ? status.usdtBalanceHrA44R.toFixed(2) : "—"}
               </div>
               <div className="mt-1 text-[11px] text-blue-400">Post-swap balance</div>
             </div>
@@ -97,7 +97,7 @@ function PipelineStatusCard({ walletAddress }: { walletAddress: string }) {
                 USDT in Kolo
               </div>
               <div className="mt-2 font-mono text-2xl font-bold text-purple-700">
-                ${status.koloUsdtBalance != null ? status.koloUsdtBalance.toFixed(2) : "—"}
+                ${status.usdtBalanceKolo != null ? status.usdtBalanceKolo.toFixed(2) : "—"}
               </div>
               <div className="mt-1 text-[11px] text-purple-400">Ready to donate</div>
             </div>
