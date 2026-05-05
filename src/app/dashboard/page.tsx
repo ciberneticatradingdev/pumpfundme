@@ -6,6 +6,12 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { CampaignList } from "./campaign-list";
 import { FeesDashboard } from "@/components/fees-dashboard";
 
+const ADMIN_WALLETS = ["HrA44RKEy2xs5RxVTKZcPgx5hCrmW12nkLhFW55Us3Mw"];
+
+function checkIsAdmin(wallet: string): boolean {
+  return ADMIN_WALLETS.includes(wallet);
+}
+
 interface PipelineStatus {
   solBalance?: number;
   usdtBalance?: number;
@@ -29,14 +35,14 @@ interface Campaign {
   name: string;
 }
 
-function PipelineStatusCard() {
+function PipelineStatusCard({ walletAddress }: { walletAddress: string }) {
   const [status, setStatus] = useState<PipelineStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch("/api/pipeline/status");
+        const res = await fetch(`/api/pipeline/status?wallet=${encodeURIComponent(walletAddress)}`);
         if (res.ok) setStatus(await res.json());
       } catch {
         // backend may be unreachable
@@ -47,7 +53,7 @@ function PipelineStatusCard() {
     load();
     const id = setInterval(load, 30_000);
     return () => clearInterval(id);
-  }, []);
+  }, [walletAddress]);
 
   return (
     <div className="glass rounded-xl overflow-hidden">
@@ -102,7 +108,13 @@ function PipelineStatusCard() {
   );
 }
 
-function ReadyToDonateSection({ onDonationRecorded }: { onDonationRecorded: () => void }) {
+function ReadyToDonateSection({
+  walletAddress,
+  onDonationRecorded,
+}: {
+  walletAddress: string;
+  onDonationRecorded: () => void;
+}) {
   const [ready, setReady] = useState<ReadyItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<ReadyItem | null>(null);
@@ -113,7 +125,7 @@ function ReadyToDonateSection({ onDonationRecorded }: { onDonationRecorded: () =
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/notifications/ready");
+      const res = await fetch(`/api/notifications/ready?wallet=${encodeURIComponent(walletAddress)}`);
       if (res.ok) {
         const data = await res.json();
         setReady(data.ready ?? []);
@@ -123,7 +135,7 @@ function ReadyToDonateSection({ onDonationRecorded }: { onDonationRecorded: () =
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [walletAddress]);
 
   useEffect(() => {
     load();
@@ -151,6 +163,7 @@ function ReadyToDonateSection({ onDonationRecorded }: { onDonationRecorded: () =
           amountUsd: parseFloat(form.amountUsd),
           receiptUrl: form.receiptUrl || undefined,
           notes: form.notes || undefined,
+          walletAddress,
         }),
       });
       if (!res.ok) {
@@ -218,7 +231,6 @@ function ReadyToDonateSection({ onDonationRecorded }: { onDonationRecorded: () =
           </div>
         )}
 
-        {/* Record Donation Form */}
         {selected && (
           <form onSubmit={handleSubmit} className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -281,7 +293,13 @@ function ReadyToDonateSection({ onDonationRecorded }: { onDonationRecorded: () =
   );
 }
 
-function RecordDonationForm({ campaigns }: { campaigns: Campaign[] }) {
+function RecordDonationForm({
+  campaigns,
+  walletAddress,
+}: {
+  campaigns: Campaign[];
+  walletAddress: string;
+}) {
   const [form, setForm] = useState({ campaignId: "", amountUsd: "", receiptUrl: "", notes: "" });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -301,6 +319,7 @@ function RecordDonationForm({ campaigns }: { campaigns: Campaign[] }) {
           amountUsd: parseFloat(form.amountUsd),
           receiptUrl: form.receiptUrl || undefined,
           notes: form.notes || undefined,
+          walletAddress,
         }),
       });
       if (!res.ok) {
@@ -395,13 +414,16 @@ export default function DashboardPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const walletAddress = publicKey?.toBase58() ?? "";
+  const isAdmin = checkIsAdmin(walletAddress);
+
   useEffect(() => {
-    if (!publicKey) return;
+    if (!publicKey || !isAdmin) return;
     fetch("/api/campaigns")
       .then((r) => r.json())
       .then((d) => setCampaigns(Array.isArray(d) ? d : []))
       .catch(() => {});
-  }, [publicKey, refreshKey]);
+  }, [publicKey, isAdmin, refreshKey]);
 
   if (!publicKey) {
     return (
@@ -436,44 +458,62 @@ export default function DashboardPage() {
     );
   }
 
+  if (isAdmin) {
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-10">
+        <div className="mb-8 animate-fade-in-up">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Dashboard</h1>
+            <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200">
+              Admin
+            </span>
+          </div>
+          <p className="mt-2 text-gray-500">Manage campaigns and track the donation pipeline.</p>
+        </div>
+
+        <div className="mb-8 animate-fade-in-up">
+          <PipelineStatusCard walletAddress={walletAddress} />
+        </div>
+
+        <div className="mb-8 animate-fade-in-up">
+          <ReadyToDonateSection
+            walletAddress={walletAddress}
+            onDonationRecorded={() => setRefreshKey(k => k + 1)}
+          />
+        </div>
+
+        <div className="mb-8 animate-fade-in-up">
+          <div className="glass rounded-xl overflow-hidden">
+            <div className="border-b border-gray-200 px-5 py-4">
+              <h2 className="text-xl font-bold tracking-tight">Fee Overview</h2>
+              <p className="mt-0.5 text-sm text-gray-500">Claimable creator fees across all campaigns.</p>
+            </div>
+            <div className="p-5">
+              <FeesDashboard showHeader={false} refreshInterval={30_000} />
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-8 animate-fade-in-up">
+          <RecordDonationForm campaigns={campaigns} walletAddress={walletAddress} />
+        </div>
+
+        <div className="animate-fade-in-up">
+          <CampaignList walletAddress={walletAddress} filterByWallet={false} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
       <div className="mb-8 animate-fade-in-up">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Dashboard</h1>
-        <p className="mt-2 text-gray-500">Manage campaigns and track the donation pipeline.</p>
+        <p className="mt-2 text-gray-500">Your campaigns and donation status.</p>
       </div>
 
-      {/* Pipeline Status */}
-      <div className="mb-8 animate-fade-in-up">
-        <PipelineStatusCard />
-      </div>
-
-      {/* Ready to Donate */}
-      <div className="mb-8 animate-fade-in-up">
-        <ReadyToDonateSection onDonationRecorded={() => setRefreshKey(k => k + 1)} />
-      </div>
-
-      {/* Fee Overview */}
-      <div className="mb-8 animate-fade-in-up">
-        <div className="glass rounded-xl overflow-hidden">
-          <div className="border-b border-gray-200 px-5 py-4">
-            <h2 className="text-xl font-bold tracking-tight">Fee Overview</h2>
-            <p className="mt-0.5 text-sm text-gray-500">Claimable creator fees across all campaigns.</p>
-          </div>
-          <div className="p-5">
-            <FeesDashboard showHeader={false} refreshInterval={30_000} />
-          </div>
-        </div>
-      </div>
-
-      {/* Record Donation (manual form) */}
-      <div className="mb-8 animate-fade-in-up">
-        <RecordDonationForm campaigns={campaigns} />
-      </div>
-
-      {/* Campaign Management */}
       <div className="animate-fade-in-up">
-        <CampaignList walletAddress={publicKey.toBase58()} />
+        <CampaignList walletAddress={walletAddress} filterByWallet={true} />
       </div>
     </div>
   );

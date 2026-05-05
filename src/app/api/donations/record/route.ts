@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { isAdminWallet } from "@/lib/admin";
 
 export async function POST(request: NextRequest) {
   if (!prisma) {
@@ -8,12 +9,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { campaignId, amountUsd, receiptUrl, notes } = body as {
+    const { campaignId, amountUsd, receiptUrl, notes, walletAddress } = body as {
       campaignId?: string;
       amountUsd?: number;
       receiptUrl?: string;
       notes?: string;
+      walletAddress?: string;
     };
+
+    if (!isAdminWallet(walletAddress ?? "")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     if (!campaignId || !amountUsd) {
       return NextResponse.json({ error: "Provide campaignId and amountUsd" }, { status: 400 });

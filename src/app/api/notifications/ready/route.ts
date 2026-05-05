@@ -1,7 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { isAdminWallet } from "@/lib/admin";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const wallet = request.nextUrl.searchParams.get("wallet") ?? "";
+  if (!isAdminWallet(wallet)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   if (!prisma) {
     return NextResponse.json({ ready: [] }, { status: 200 });
   }

@@ -42,9 +42,10 @@ const FEE_REFRESH_MS = 30_000;
 
 interface Props {
   walletAddress: string;
+  filterByWallet?: boolean;
 }
 
-export function CampaignList({ walletAddress }: Props) {
+export function CampaignList({ walletAddress, filterByWallet = true }: Props) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   // undefined = loading, null = error, map = data
@@ -56,7 +57,8 @@ export function CampaignList({ walletAddress }: Props) {
 
   const fetchCampaigns = useCallback(async () => {
     try {
-      const res = await fetch(`/api/campaigns?wallet=${walletAddress}`);
+      const url = filterByWallet ? `/api/campaigns?wallet=${walletAddress}` : `/api/campaigns`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setCampaigns(data);
@@ -64,7 +66,7 @@ export function CampaignList({ walletAddress }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [walletAddress]);
+  }, [walletAddress, filterByWallet]);
 
   const fetchFees = useCallback(async () => {
     try {
@@ -219,6 +221,14 @@ export function CampaignList({ walletAddress }: Props) {
                         : (feeByCampaign[c.id] ?? 0)
                   }
                 />
+              </div>
+              <div className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 border border-emerald-100">
+                <p className="text-[10px] uppercase tracking-wider text-emerald-500">
+                  Donated by PumpFundMe
+                </p>
+                <p className="mt-0.5 font-mono text-sm font-semibold text-emerald-700">
+                  ${c.totalDonatedUsd.toFixed(2)}
+                </p>
               </div>
 
               {/* Linked Tokens */}

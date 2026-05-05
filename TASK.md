@@ -1,62 +1,69 @@
-# PumpFundMe — Frontend + Backend Cleanup for Semi-Manual Donation Flow
+# PumpFundMe — Admin vs User Role Separation
 
 ## Context
-GoFundMe automation was ABANDONED (enterprise anti-bot). The pipeline now works:
-claim fees → swap SOL→USDT (Jupiter) → transfer USDT to Kolo card wallet.
-Donations to GoFundMe are done MANUALLY by the owner. We need the app to reflect this.
+PumpFundMe collects ALL fees into a single wallet (HrA44R). The PumpFundMe admin (Quin) manually donates to GoFundMe from the Kolo card. Users only create campaigns and register tokens — they never handle donations.
 
-## BACKEND CHANGES (in backend/src/)
+The current code incorrectly lets any connected wallet access donation recording and pipeline management. We need to separate admin and user roles.
 
-### 1. Remove GoFundMe automation:
-- Delete `gofundme-donor.ts` and `captcha-solver.ts` (dead code)
-- Remove `donation-pipeline.ts` (the auto-donation logic)
-- In `index.ts`: remove `startDonationPipeline` import/call, remove `/api/donations/trigger` and `/api/donations/process` endpoints
-- In `config.ts`: remove koloCard*, headlessBrowser, twoCaptchaApiKey, donationIntervalMs, donationMinUsd configs
-- Keep `/api/donations/pending` and `/api/donations/history` endpoints (still useful)
+## Admin Wallet(s)
+Define an admin wallet list. For now, hardcode:
+```
+ADMIN_WALLETS = ["HrA44RKEy2xs5RxVTKZcPgx5hCrmW12nkLhFW55Us3Mw"]
+```
+Also check `ADMIN_WALLETS` env var (comma-separated) so more can be added later without code changes.
 
-### 2. Add manual donation recording endpoint:
-- `POST /api/donations/record` — body: `{ campaignId, amountUsd, receiptUrl?, notes? }`
-- Creates a DONATION transaction with status CONFIRMED
-- Updates `campaign.totalDonatedUsd`
-- Returns the created transaction
-- This is for the owner to record after manually donating on GoFundMe
+## BACKEND CHANGES
 
-### 3. Add notification endpoint:
-- `GET /api/notifications/ready` — returns campaigns that have USDT_TRANSFER confirmed but no corresponding DONATION yet
-- Shows how much is available to donate per campaign
-- Simple: just query the DB, no push notifications needed
+### 1. Add admin auth middleware/helper
+- Create `src/lib/admin.ts` — exports `isAdminWallet(wallet: string): boolean`
+- Checks against hardcoded list + `ADMIN_WALLETS` env var
 
-## FRONTEND CHANGES (in src/app/)
+### 2. Protect admin-only endpoints
+- `POST /api/donations/record` — require admin wallet in request (add `walletAddress` field, verify it's admin)
+- `GET /api/notifications/ready` — admin only
+- `GET /api/pipeline/status` — admin only
+- Return 403 if non-admin wallet tries to access these
 
-### 1. Landing page (src/app/page.tsx):
-- Replace hardcoded $0.00 placeholders with real stats from `/api/transactions/summary`
-- Show: total SOL claimed, total USDT swapped, total USDT donated
-- Add a transparency section showing the pipeline flow visually
+### 3. Keep public endpoints public
+- `GET /api/transactions` — public (transparency)
+- `GET /api/transactions/summary` — public (transparency)
+- `GET /api/campaigns` and `/api/campaigns/[id]` — public
+- All fee balance/history endpoints — public
 
-### 2. Transactions page (src/app/transactions/page.tsx):
-- Fetch from backend `/api/transactions` endpoint
-- Show each transaction with: type badge (FEE_RECEIVED/SOL_SWAP/USDT_TRANSFER/DONATION), amount, date, Solscan link
-- Color-coded by type, filterable
-- Each tx links to `solscan.io/tx/{signature}`
+## FRONTEND CHANGES
 
-### 3. Dashboard (src/app/dashboard/page.tsx):
-- Add pipeline status section (fetch `/api/pipeline/status`)
-- Show wallet balances (SOL in HrA44R, USDT in HrA44R, USDT in Kolo)
-- Add "Ready to Donate" section showing campaigns with undonated USDT
-- Add "Record Donation" form: select campaign, enter amount, receipt URL, submit to `/api/donations/record`
-- Keep existing campaign management
+### 1. Dashboard — split into admin vs user views
+The dashboard (`src/app/dashboard/page.tsx`) should detect if the connected wallet is an admin:
 
-### 4. Campaign detail (src/app/campaign/[id]/page.tsx):
-- Add transparency timeline showing all transactions for this campaign
-- Show pipeline progress: fees claimed → swapped → transferred → donated
-- Each step with Solscan links
+**If admin wallet:**
+- Show pipeline status (wallet balances: SOL in HrA44R, USDT in HrA44R, USDT in Kolo)
+- Show "Ready to Donate" section — campaigns with USDT transferred but not yet donated
+- Show "Record Donation" form (campaign selector, amount USD, receipt URL, notes)
+- Show all campaigns across all users
+- Show recent donations recorded
+
+**If regular user wallet:**
+- Show only THEIR campaigns (filtered by connected wallet = creatorWallet)
+- Show their registered tokens and how much fees each has generated
+- Show donation status per campaign (how much was donated by PumpFundMe for their campaign)
+- NO pipeline status, NO record donation form, NO wallet balances
+
+### 2. Admin indicator
+- Small badge or indicator showing "Admin" when connected with admin wallet
+- Don't expose admin wallet addresses to non-admin users
+
+### 3. Public pages stay the same
+- Landing page: real stats, transparency section — NO CHANGES
+- Campaign detail: transparency timeline — NO CHANGES  
+- Transactions page: all transactions with Solscan links — NO CHANGES
+- Terminal: real-time events — NO CHANGES
 
 ## IMPORTANT
-- Backend URL for API calls from frontend: use `NEXT_PUBLIC_BACKEND_URL` or `BACKEND_URL` env var, fallback to `https://pumpfundme-production.up.railway.app`
-- The theme is white/light with emerald-500 green accents, using shadcn/ui components
-- Keep the existing wallet auth flow for dashboard
-- All monetary values should show proper formatting (SOL with 4-6 decimals, USD with 2)
-- The app uses Next.js 15 App Router with server components where possible
+- Use the existing wallet auth (Solana wallet adapter) — no new auth system needed
+- Admin check is simply: is the connected wallet in the admin list?
+- The admin wallet list should be easy to extend (env var)
+- Theme: white/light with emerald-500 green accents, shadcn/ui
+- Backend URL: `NEXT_PUBLIC_BACKEND_URL` env var, fallback to `https://pumpfundme-production.up.railway.app`
 
 ## When done
-Run: `openclaw system event --text "Done: PumpFundMe frontend+backend cleanup — removed GoFundMe automation, added manual donation recording, updated all frontend pages with real stats and Solscan transparency" --mode now`
+Run: `openclaw system event --text "Done: PumpFundMe admin/user role separation — admin-only donation recording, user dashboard shows their campaigns only, public transparency unchanged" --mode now`
