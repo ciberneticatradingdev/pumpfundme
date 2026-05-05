@@ -11,11 +11,13 @@ export async function GET() {
       totalSwapCount: 0,
       totalUsdtTransferred: 0,
       totalTransferCount: 0,
+      totalUsdtDonated: 0,
+      totalDonationCount: 0,
     });
   }
 
   try {
-    const [claimed, swapped, transferred] = await Promise.all([
+    const [claimed, swapped, transferred, donated] = await Promise.all([
       prisma.transaction.aggregate({
         where: { type: "FEE_RECEIVED", status: "CONFIRMED" },
         _sum: { amountSol: true },
@@ -31,6 +33,11 @@ export async function GET() {
         _sum: { amountUsd: true },
         _count: true,
       }),
+      prisma.transaction.aggregate({
+        where: { type: "DONATION", status: "CONFIRMED" },
+        _sum: { amountUsd: true },
+        _count: true,
+      }),
     ]);
 
     return NextResponse.json({
@@ -41,6 +48,8 @@ export async function GET() {
       totalSwapCount: swapped._count,
       totalUsdtTransferred: transferred._sum.amountUsd ?? 0,
       totalTransferCount: transferred._count,
+      totalUsdtDonated: donated._sum.amountUsd ?? 0,
+      totalDonationCount: donated._count,
     });
   } catch (err) {
     console.error("[api/transactions/summary] error:", err);

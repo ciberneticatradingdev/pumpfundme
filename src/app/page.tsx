@@ -3,37 +3,35 @@ import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 
 async function getLiveStats() {
-  if (!prisma) return { raised: "$0.00", campaigns: "0", donations: "0" };
+  if (!prisma) {
+    return { solClaimed: "0.00 SOL", usdtSwapped: "$0.00", usdtDonated: "$0.00", campaigns: "0" };
+  }
   try {
-    const [solClaimed, campaignCount, transferCount] = await Promise.all([
+    const [solAgg, swapAgg, donationAgg, campaignCount] = await Promise.all([
       prisma.transaction.aggregate({
         where: { type: "FEE_RECEIVED", status: "CONFIRMED" },
         _sum: { amountSol: true },
       }),
-      prisma.campaign.count({ where: { status: "ACTIVE" } }),
       prisma.transaction.aggregate({
-        where: { type: "USDT_TRANSFER", status: "CONFIRMED" },
+        where: { type: "SOL_SWAP", status: "CONFIRMED" },
         _sum: { amountUsd: true },
-        _count: true,
       }),
+      prisma.transaction.aggregate({
+        where: { type: "DONATION", status: "CONFIRMED" },
+        _sum: { amountUsd: true },
+      }),
+      prisma.campaign.count({ where: { status: "ACTIVE" } }),
     ]);
-    const totalSol = solClaimed._sum.amountSol ?? 0;
-    const totalUsdtDonated = transferCount._sum.amountUsd ?? 0;
     return {
-      raised: `${totalSol.toFixed(2)} SOL`,
+      solClaimed: `${(solAgg._sum.amountSol ?? 0).toFixed(4)} SOL`,
+      usdtSwapped: `$${(swapAgg._sum.amountUsd ?? 0).toFixed(2)}`,
+      usdtDonated: `$${(donationAgg._sum.amountUsd ?? 0).toFixed(2)}`,
       campaigns: String(campaignCount),
-      donations: totalUsdtDonated > 0 ? `$${totalUsdtDonated.toFixed(2)}` : String(transferCount._count),
     };
   } catch {
-    return { raised: "$0.00", campaigns: "0", donations: "0" };
+    return { solClaimed: "0.00 SOL", usdtSwapped: "$0.00", usdtDonated: "$0.00", campaigns: "0" };
   }
 }
-
-const defaultStats = [
-  { label: "Total Raised", value: "$0.00" },
-  { label: "Active Campaigns", value: "0" },
-  { label: "Donations Made", value: "0" },
-];
 
 const steps = [
   {
@@ -58,8 +56,8 @@ const steps = [
   },
   {
     num: "03",
-    title: "Auto-Donate",
-    desc: "Fees automatically convert to donations — 0% commission, ever.",
+    title: "Fees → Donations",
+    desc: "Fees convert to USDT on-chain, then the owner donates to GoFundMe — 0% commission, ever.",
     icon: (
       <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
@@ -89,8 +87,8 @@ const trustCards = [
     ),
   },
   {
-    title: "Fully Automated",
-    desc: "From blockchain to donation, no middleman. Smart contracts handle everything.",
+    title: "Verifiable Pipeline",
+    desc: "SOL collection, Jupiter swaps, and USDT transfers are on-chain and auditable. Donations are manually recorded with receipts.",
     icon: (
       <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
@@ -111,7 +109,7 @@ const faqs = [
   },
   {
     q: "How are donations made to GoFundMe?",
-    a: "Collected SOL is converted to USD and donated directly to the GoFundMe campaign via their platform. Every transaction is logged and visible in our real-time terminal.",
+    a: "Collected SOL is swapped to USDT via Jupiter on-chain, then manually donated to the GoFundMe campaign by the owner. Every step is publicly recorded — you can verify all on-chain transactions on Solscan.",
   },
   {
     q: "Can anyone create a campaign?",
@@ -123,14 +121,15 @@ const faqs = [
   },
 ];
 
-export const revalidate = 30; // refresh stats every 30s
+export const revalidate = 30;
 
 export default async function LandingPage() {
   const liveStats = await getLiveStats();
   const stats = [
-    { label: "Total Raised", value: liveStats.raised },
+    { label: "SOL Claimed", value: liveStats.solClaimed },
+    { label: "Swapped to USDT", value: liveStats.usdtSwapped },
+    { label: "Donated to Causes", value: liveStats.usdtDonated },
     { label: "Active Campaigns", value: liveStats.campaigns },
-    { label: "Donations Made", value: liveStats.donations },
   ];
   return (
     <div className="flex flex-col">
@@ -195,21 +194,16 @@ export default async function LandingPage() {
       </section>
 
       {/* ── Stats Bar ── */}
-      <section className="relative border-y border-gray-200">
-        <div className="mx-auto flex max-w-4xl flex-col items-center justify-around gap-6 px-4 py-8 sm:flex-row sm:gap-0">
+      <section className="relative border-y border-gray-200 bg-white">
+        <div className="mx-auto grid max-w-5xl grid-cols-2 gap-px px-4 py-0 sm:grid-cols-4 sm:gap-0">
           {stats.map((stat, i) => (
-            <div key={stat.label} className="flex items-center gap-6">
-              {i > 0 && (
-                <div className="hidden h-12 w-px bg-gray-200 sm:block" />
-              )}
-              <div className="glass rounded-xl px-8 py-4 text-center">
-                <p className="text-3xl font-bold tabular-nums text-emerald-600">
-                  {stat.value}
-                </p>
-                <p className="mt-1 text-xs uppercase tracking-wider text-gray-400">
-                  {stat.label}
-                </p>
-              </div>
+            <div key={stat.label} className={`flex flex-col items-center px-6 py-8 text-center ${i > 0 ? "sm:border-l sm:border-gray-100" : ""}`}>
+              <p className="text-2xl font-bold tabular-nums text-emerald-600 sm:text-3xl">
+                {stat.value}
+              </p>
+              <p className="mt-1 text-xs uppercase tracking-wider text-gray-400">
+                {stat.label}
+              </p>
             </div>
           ))}
         </div>
@@ -246,6 +240,57 @@ export default async function LandingPage() {
               <p className="mt-2 max-w-xs text-sm text-gray-500">{step.desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ── Transparency Pipeline ── */}
+      <section className="border-y border-gray-100 bg-white px-4 py-20">
+        <div className="mx-auto max-w-4xl">
+          <div className="mb-12 text-center">
+            <p className="text-sm font-medium uppercase tracking-[0.2em] text-emerald-600">
+              Full Transparency
+            </p>
+            <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
+              Every dollar, traceable on-chain
+            </h2>
+            <p className="mt-3 text-gray-500">
+              From trading fees to charity — every step is publicly verifiable.
+            </p>
+          </div>
+
+          <div className="relative">
+            {/* Connecting line */}
+            <div className="pointer-events-none absolute top-7 left-7 right-7 hidden h-px border-t-2 border-dashed border-emerald-200 sm:block" />
+
+            <div className="grid gap-6 sm:grid-cols-4">
+              {[
+                { step: "01", label: "Fees Collected", desc: "Trading fees arrive at our wallet from pump.fun", color: "bg-emerald-50 text-emerald-600 border-emerald-200" },
+                { step: "02", label: "SOL → USDT", desc: "Jupiter swap converts SOL to USDT at best rate", color: "bg-blue-50 text-blue-600 border-blue-200" },
+                { step: "03", label: "Sent to Kolo", desc: "USDT transferred to our Kolo card wallet on-chain", color: "bg-purple-50 text-purple-600 border-purple-200" },
+                { step: "04", label: "GoFundMe Donation", desc: "Owner manually donates on GoFundMe and records receipt", color: "bg-pink-50 text-pink-600 border-pink-200" },
+              ].map((item) => (
+                <div key={item.step} className="flex flex-col items-center text-center">
+                  <div className={`relative z-10 flex h-14 w-14 items-center justify-center rounded-full border-2 font-bold text-lg ${item.color}`}>
+                    {item.step}
+                  </div>
+                  <h3 className="mt-4 text-sm font-semibold">{item.label}</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-gray-500">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-10 text-center">
+            <Link
+              href="/transactions"
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-5 text-sm font-medium text-emerald-700 transition-all hover:bg-emerald-100"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+              </svg>
+              View All Transactions on Solscan
+            </Link>
+          </div>
         </div>
       </section>
 

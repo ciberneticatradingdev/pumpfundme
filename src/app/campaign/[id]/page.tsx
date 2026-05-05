@@ -22,6 +22,18 @@ interface Event {
   campaignName?: string;
 }
 
+interface Transaction {
+  id: string;
+  type: string;
+  amountSol: number;
+  amountUsd: number | null;
+  txSignature: string | null;
+  solscanUrl: string | null;
+  status: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 interface Campaign {
   id: string;
   name: string;
@@ -34,6 +46,29 @@ interface Campaign {
   tokens: Token[];
   events: Event[];
 }
+
+const TX_TYPE_LABELS: Record<string, string> = {
+  FEE_RECEIVED: "Fee Claimed",
+  SOL_SWAP: "SOL → USDT",
+  USDT_TRANSFER: "USDT → Kolo",
+  SOL_TRANSFER: "SOL Transfer",
+  DONATION: "Donation",
+};
+
+const TX_TYPE_COLORS: Record<string, string> = {
+  FEE_RECEIVED: "bg-emerald-100 text-emerald-700",
+  SOL_SWAP: "bg-blue-100 text-blue-700",
+  USDT_TRANSFER: "bg-purple-100 text-purple-700",
+  SOL_TRANSFER: "bg-gray-100 text-gray-700",
+  DONATION: "bg-pink-100 text-pink-700",
+};
+
+const PIPELINE_STEPS = [
+  { type: "FEE_RECEIVED", label: "Fees Claimed", icon: "💰" },
+  { type: "SOL_SWAP", label: "SOL Swapped", icon: "🔄" },
+  { type: "USDT_TRANSFER", label: "Sent to Kolo", icon: "📤" },
+  { type: "DONATION", label: "Donated", icon: "❤️" },
+];
 
 const typeColors: Record<string, string> = {
   fee_received: "text-emerald-400",
@@ -51,6 +86,21 @@ const statusStyles: Record<string, string> = {
   COMPLETED: "bg-blue-50 text-blue-600 border-blue-200",
 };
 
+function shortSig(sig: string): string {
+  return sig.slice(0, 8) + "…" + sig.slice(-6);
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 export default function CampaignDetailPage({
   params,
 }: {
@@ -58,16 +108,24 @@ export default function CampaignDetailPage({
 }) {
   const { id } = use(params);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch(`/api/campaigns/${id}`)
-      .then((r) => {
+    Promise.all([
+      fetch(`/api/campaigns/${id}`).then((r) => {
         if (!r.ok) throw new Error("Not found");
         return r.json();
+      }),
+      fetch(`/api/transactions?campaignId=${id}&limit=100`).then((r) =>
+        r.ok ? r.json() : { transactions: [] }
+      ),
+    ])
+      .then(([camp, txData]) => {
+        setCampaign(camp);
+        setTransactions(txData.transactions ?? []);
       })
-      .then(setCampaign)
       .catch(() => setError("Campaign not found"))
       .finally(() => setLoading(false));
   }, [id]);
@@ -105,6 +163,18 @@ export default function CampaignDetailPage({
     );
   }
 
+  // Compute pipeline progress
+  const pipelineProgress = PIPELINE_STEPS.map((step) => {
+    const stepTxs = transactions.filter(
+      (tx) => tx.type === step.type && tx.status === "CONFIRMED"
+    );
+    const total = stepTxs.reduce(
+      (sum, tx) => sum + (tx.amountUsd ?? tx.amountSol ?? 0),
+      0
+    );
+    return { ...step, done: stepTxs.length > 0, count: stepTxs.length, total, txs: stepTxs };
+  });
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 animate-fade-in-up">
       {/* Back link */}
@@ -132,9 +202,7 @@ export default function CampaignDetailPage({
             </span>
           </div>
           {campaign.description && (
-            <p className="mt-2 max-w-2xl text-gray-500">
-              {campaign.description}
-            </p>
+            <p className="mt-2 max-w-2xl text-gray-500">{campaign.description}</p>
           )}
         </div>
         <a
@@ -157,9 +225,7 @@ export default function CampaignDetailPage({
               </svg>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400">
-                SOL Received
-              </p>
+              <p className="text-[10px] uppercase tracking-wider text-gray-400">SOL Received</p>
               <p className="mt-0.5 font-mono text-xl font-bold text-emerald-600">
                 {campaign.totalSolReceived.toFixed(4)}
               </p>
@@ -175,9 +241,7 @@ export default function CampaignDetailPage({
               </svg>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400">
-                USD Donated
-              </p>
+              <p className="text-[10px] uppercase tracking-wider text-gray-400">USD Donated</p>
               <p className="mt-0.5 font-mono text-xl font-bold">
                 ${campaign.totalDonatedUsd.toFixed(2)}
               </p>
@@ -193,16 +257,96 @@ export default function CampaignDetailPage({
               </svg>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400">
-                Tokens Linked
-              </p>
-              <p className="mt-0.5 font-mono text-xl font-bold">
-                {campaign.tokens.length}
-              </p>
+              <p className="text-[10px] uppercase tracking-wider text-gray-400">Tokens Linked</p>
+              <p className="mt-0.5 font-mono text-xl font-bold">{campaign.tokens.length}</p>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Transparency Timeline */}
+      <div className="mt-8 glass rounded-xl overflow-hidden">
+        <div className="border-b border-gray-200 px-5 py-4">
+          <h2 className="text-lg font-semibold">Pipeline Progress</h2>
+          <p className="mt-0.5 text-xs text-gray-400">
+            Every step from fees to donation — verifiable on Solscan.
+          </p>
+        </div>
+        <div className="p-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {pipelineProgress.map((step, i) => (
+              <div key={step.type} className={`relative rounded-xl border p-4 ${step.done ? "border-emerald-200 bg-emerald-50" : "border-gray-100 bg-gray-50"}`}>
+                {i < pipelineProgress.length - 1 && (
+                  <div className="pointer-events-none absolute -right-2 top-1/2 hidden -translate-y-1/2 sm:block">
+                    <svg className="h-4 w-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                    </svg>
+                  </div>
+                )}
+                <div className={`text-2xl mb-2 ${step.done ? "" : "opacity-30"}`}>{step.icon}</div>
+                <div className={`text-xs font-semibold ${step.done ? "text-emerald-700" : "text-gray-400"}`}>
+                  {step.label}
+                </div>
+                {step.done ? (
+                  <div className="mt-1 text-xs text-gray-500">
+                    {step.count} tx{step.count !== 1 && "s"} · ${step.total.toFixed(2)}
+                  </div>
+                ) : (
+                  <div className="mt-1 text-xs text-gray-300">Pending</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Transaction Timeline */}
+      {transactions.length > 0 && (
+        <div className="mt-6 glass rounded-xl overflow-hidden">
+          <div className="border-b border-gray-200 px-5 py-4">
+            <h2 className="text-lg font-semibold">Transaction History</h2>
+            <p className="mt-0.5 text-xs text-gray-400">All on-chain transactions for this campaign.</p>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {transactions.map((tx) => (
+              <div key={tx.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50/50 transition-colors">
+                <span className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${TX_TYPE_COLORS[tx.type] ?? "bg-gray-100 text-gray-600"}`}>
+                  {TX_TYPE_LABELS[tx.type] ?? tx.type}
+                </span>
+                <span className="font-mono text-sm text-gray-700">
+                  {tx.type === "FEE_RECEIVED" || tx.type === "SOL_SWAP" || tx.type === "SOL_TRANSFER"
+                    ? `${tx.amountSol.toFixed(4)} SOL`
+                    : null}
+                  {tx.amountUsd != null && tx.amountUsd > 0
+                    ? ` $${tx.amountUsd.toFixed(2)}`
+                    : null}
+                </span>
+                <span className="flex-1" />
+                {tx.solscanUrl ? (
+                  <a
+                    href={tx.solscanUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-xs text-emerald-600 hover:text-emerald-700 hover:underline"
+                  >
+                    {shortSig(tx.txSignature!)} ↗
+                  </a>
+                ) : tx.metadata?.receiptUrl ? (
+                  <a
+                    href={String(tx.metadata.receiptUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-pink-600 hover:underline"
+                  >
+                    Receipt ↗
+                  </a>
+                ) : null}
+                <span className="text-xs text-gray-400 shrink-0">{formatDate(tx.createdAt)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Tokens */}
       <div className="mt-8 glass rounded-xl overflow-hidden">
@@ -211,9 +355,7 @@ export default function CampaignDetailPage({
         </div>
         <div className="p-5">
           {campaign.tokens.length === 0 ? (
-            <p className="py-4 text-center text-sm text-gray-400">
-              No tokens linked yet.
-            </p>
+            <p className="py-4 text-center text-sm text-gray-400">No tokens linked yet.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -228,22 +370,28 @@ export default function CampaignDetailPage({
                 </thead>
                 <tbody>
                   {campaign.tokens.map((t) => (
-                    <tr
-                      key={t.id}
-                      className="border-b border-gray-100 last:border-0"
-                    >
+                    <tr key={t.id} className="border-b border-gray-100 last:border-0">
                       <td className="py-3 pr-4 font-mono text-xs text-gray-500">
-                        {t.mintAddress.slice(0, 8)}…{t.mintAddress.slice(-6)}
+                        <a
+                          href={`https://solscan.io/token/${t.mintAddress}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:text-emerald-600 hover:underline"
+                        >
+                          {t.mintAddress.slice(0, 8)}…{t.mintAddress.slice(-6)} ↗
+                        </a>
                       </td>
-                      <td className="py-3 pr-4 text-gray-700">
-                        {t.name || "—"}
-                      </td>
-                      <td className="py-3 pr-4 text-gray-700">
-                        {t.symbol || "—"}
-                      </td>
+                      <td className="py-3 pr-4 text-gray-700">{t.name || "—"}</td>
+                      <td className="py-3 pr-4 text-gray-700">{t.symbol || "—"}</td>
                       <td className="py-3 pr-4 font-mono text-xs text-gray-500">
-                        {t.deployerWallet.slice(0, 8)}…
-                        {t.deployerWallet.slice(-6)}
+                        <a
+                          href={`https://solscan.io/account/${t.deployerWallet}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:text-emerald-600 hover:underline"
+                        >
+                          {t.deployerWallet.slice(0, 8)}…{t.deployerWallet.slice(-6)} ↗
+                        </a>
                       </td>
                       <td className="py-3 text-xs text-gray-400">
                         {new Date(t.createdAt).toLocaleDateString()}
@@ -285,9 +433,7 @@ export default function CampaignDetailPage({
         </div>
         <div className="p-5">
           {campaign.events.length === 0 ? (
-            <p className="py-4 text-center text-sm text-gray-400">
-              No activity yet.
-            </p>
+            <p className="py-4 text-center text-sm text-gray-400">No activity yet.</p>
           ) : (
             <div className="space-y-1 font-mono text-sm">
               {campaign.events.map((event) => (
@@ -296,15 +442,9 @@ export default function CampaignDetailPage({
                   className="flex gap-3 rounded px-2 py-1.5 leading-relaxed transition-colors hover:bg-gray-50"
                 >
                   <span className="shrink-0 tabular-nums text-gray-300">
-                    {new Date(event.timestamp).toLocaleTimeString("en-US", {
-                      hour12: false,
-                    })}
+                    {new Date(event.timestamp).toLocaleTimeString("en-US", { hour12: false })}
                   </span>
-                  <span
-                    className={`w-24 shrink-0 pt-0.5 text-xs font-semibold uppercase ${
-                      typeColors[event.type] || "text-gray-400"
-                    }`}
-                  >
+                  <span className={`w-24 shrink-0 pt-0.5 text-xs font-semibold uppercase ${typeColors[event.type] || "text-gray-400"}`}>
                     {event.type.replace(/_/g, " ")}
                   </span>
                   <span className="text-gray-700">{event.message}</span>

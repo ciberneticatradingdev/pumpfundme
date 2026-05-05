@@ -3,7 +3,6 @@ import { db } from './db';
 import { startMonitor } from './fee-monitor';
 import { startClaimer, claimSingleToken, claimAllTokens, getVaultBalances } from './fee-claimer';
 import { startPipeline, getPipelineStatus } from './pipeline';
-import { startDonationPipeline, processPendingDonations, triggerDonationForCampaign } from './donation-pipeline';
 import { config } from './config';
 
 function readBody(req: http.IncomingMessage): Promise<string> {
@@ -81,10 +80,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
   if (method === 'GET' && url.startsWith('/api/transactions/summary')) {
     try {
-      const [claimed, swapped, transferred] = await Promise.all([
+      const [claimed, swapped, transferred, donated] = await Promise.all([
         db.transaction.aggregate({ where: { type: 'FEE_RECEIVED', status: 'CONFIRMED' }, _sum: { amountSol: true }, _count: true }),
         db.transaction.aggregate({ where: { type: 'SOL_SWAP', status: 'CONFIRMED' }, _sum: { amountSol: true, amountUsd: true }, _count: true }),
         db.transaction.aggregate({ where: { type: 'USDT_TRANSFER', status: 'CONFIRMED' }, _sum: { amountUsd: true }, _count: true }),
+        db.transaction.aggregate({ where: { type: 'DONATION', status: 'CONFIRMED' }, _sum: { amountUsd: true }, _count: true }),
       ]);
       send(res, 200, {
         totalSolClaimed: claimed._sum.amountSol ?? 0,
@@ -94,6 +94,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         totalSwapCount: swapped._count,
         totalUsdtTransferred: transferred._sum.amountUsd ?? 0,
         totalTransferCount: transferred._count,
+        totalUsdtDonated: donated._sum.amountUsd ?? 0,
+        totalDonationCount: donated._count,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -165,19 +167,88 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     return;
   }
 
-  if (method === 'POST' && url === '/api/donations/trigger') {
+  if (method === 'POST' && url === '/api/donations/record') {
     try {
       const raw = await readBody(req);
       const body = raw ? JSON.parse(raw) : {};
-      const { campaignId, amountUsd } = body as { campaignId?: string; amountUsd?: number };
+      const { campaignId, amountUsd, receiptUrl, notes } = body as {
+        campaignId?: string;
+        amountUsd?: number;
+        receiptUrl?: string;
+        notes?: string;
+      };
 
       if (!campaignId || !amountUsd) {
         send(res, 400, { error: 'Provide campaignId and amountUsd' });
         return;
       }
 
-      const result = await triggerDonationForCampaign(campaignId, Number(amountUsd));
-      send(res, result.success ? 200 : 400, result);
+      const campaign = await db.campaign.findUnique({ where: { id: campaignId } });
+      if (!campaign) {
+        send(res, 404, { error: 'Campaign not found' });
+        return;
+      }
+
+      const [transaction] = await db.$transaction([
+        db.transaction.create({
+          data: {
+            type: 'DONATION',
+            campaignId,
+            amountSol: 0,
+            amountUsd: Number(amountUsd),
+            status: 'CONFIRMED',
+            metadata: {
+              ...(receiptUrl ? { receiptUrl } : {}),
+              ...(notes ? { notes } : {}),
+              recordedManually: true,
+            },
+          },
+        }),
+        db.campaign.update({
+          where: { id: campaignId },
+          data: { totalDonatedUsd: { increment: Number(amountUsd) } },
+        }),
+      ]);
+
+      send(res, 200, { transaction });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      send(res, 500, { error: message });
+    }
+    return;
+  }
+
+  if (method === 'GET' && url === '/api/notifications/ready') {
+    try {
+      // Find campaigns with confirmed USDT_TRANSFER but no corresponding DONATION yet
+      const campaigns = await db.campaign.findMany({
+        where: {
+          transactions: {
+            some: { type: 'USDT_TRANSFER', status: 'CONFIRMED' },
+          },
+        },
+        include: {
+          transactions: {
+            where: { type: { in: ['USDT_TRANSFER', 'DONATION'] }, status: 'CONFIRMED' },
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      });
+
+      const ready = campaigns
+        .map(campaign => {
+          const transferred = campaign.transactions
+            .filter(tx => tx.type === 'USDT_TRANSFER')
+            .reduce((sum, tx) => sum + (tx.amountUsd ?? 0), 0);
+          const donated = campaign.transactions
+            .filter(tx => tx.type === 'DONATION')
+            .reduce((sum, tx) => sum + (tx.amountUsd ?? 0), 0);
+          const available = transferred - donated;
+          return { campaignId: campaign.id, campaignName: campaign.name, goFundMeUrl: campaign.goFundMeUrl, totalTransferred: transferred, totalDonated: donated, availableToDonate: available };
+        })
+        .filter(c => c.availableToDonate > 0.01);
+
+      send(res, 200, { ready });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       send(res, 500, { error: message });
@@ -203,17 +274,6 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       ]);
 
       send(res, 200, { donations, total, limit, offset });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      send(res, 500, { error: message });
-    }
-    return;
-  }
-
-  if (method === 'POST' && url === '/api/donations/process') {
-    try {
-      await processPendingDonations();
-      send(res, 200, { triggered: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       send(res, 500, { error: message });
@@ -261,13 +321,9 @@ async function main(): Promise<void> {
     startClaimer(),
   ]);
 
-  // Start SOL → USDT → Kolo pipeline (runs after claimer deposits SOL)
   await startPipeline();
 
-  // Start GoFundMe donation pipeline (runs after USDT arrives at Kolo)
-  await startDonationPipeline();
-
-  console.log('[index] all services running (monitor + claimer + pipeline + donation-pipeline)');
+  console.log('[index] all services running (monitor + claimer + pipeline)');
 }
 
 main().catch((err) => {

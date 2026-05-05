@@ -21,15 +21,4 @@ export const config = {
   swapSlippageBps: parseInt(process.env.SWAP_SLIPPAGE_BPS ?? '50', 10),
   pipelineIntervalMs: parseInt(process.env.PIPELINE_INTERVAL_MS ?? '600000', 10),
   usdtMint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
-  // GoFundMe donation config (Kolo card)
-  koloCardNumber: process.env.KOLO_CARD_NUMBER ?? '',
-  koloCardExpiry: process.env.KOLO_CARD_EXPIRY ?? '',
-  koloCardCvc: process.env.KOLO_CARD_CVC ?? '',
-  koloCardName: process.env.KOLO_CARD_NAME ?? '',
-  koloCardZip: process.env.KOLO_CARD_ZIP ?? '',
-  koloCardEmail: process.env.KOLO_CARD_EMAIL ?? '',
-  donationIntervalMs: parseInt(process.env.DONATION_INTERVAL_MS ?? '600000', 10),
-  donationMinUsd: parseFloat(process.env.DONATION_MIN_USD ?? '5'),
-  headlessBrowser: process.env.HEADLESS_BROWSER !== 'false',
-  twoCaptchaApiKey: process.env.TWOCAPTCHA_API_KEY ?? '',
 } as const;

@@ -8,13 +8,15 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const typeFilter = searchParams.get("type");
+    const typeFilter = searchParams.get("type") as "FEE_RECEIVED" | "SOL_SWAP" | "USDT_TRANSFER" | "SOL_TRANSFER" | "DONATION" | null;
+    const campaignId = searchParams.get("campaignId");
     const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 200);
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    const where = typeFilter
-      ? { type: typeFilter as "FEE_RECEIVED" | "SOL_SWAP" | "USDT_TRANSFER" | "SOL_TRANSFER" | "DONATION" }
-      : {};
+    const where = {
+      ...(typeFilter ? { type: typeFilter } : {}),
+      ...(campaignId ? { campaignId } : {}),
+    };
 
     const [transactions, total] = await Promise.all([
       prisma.transaction.findMany({

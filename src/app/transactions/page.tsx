@@ -24,6 +24,8 @@ interface Summary {
   totalSwapCount: number;
   totalUsdtTransferred: number;
   totalTransferCount: number;
+  totalUsdtDonated: number;
+  totalDonationCount: number;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -47,6 +49,7 @@ const FILTERS = [
   { value: "FEE_RECEIVED", label: "Claims" },
   { value: "SOL_SWAP", label: "Swaps" },
   { value: "USDT_TRANSFER", label: "Transfers" },
+  { value: "DONATION", label: "Donations" },
 ];
 
 function shortSig(sig: string): string {
@@ -129,7 +132,7 @@ export default function TransactionsPage() {
 
       {/* Summary Cards */}
       {summary && (
-        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-4">
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
             <div className="text-xs font-medium uppercase tracking-wider text-emerald-600">
               Fees Claimed
@@ -154,13 +157,24 @@ export default function TransactionsPage() {
           </div>
           <div className="rounded-xl border border-purple-200 bg-purple-50 p-5">
             <div className="text-xs font-medium uppercase tracking-wider text-purple-600">
-              Sent to Charity
+              Sent to Kolo
             </div>
             <div className="mt-2 text-2xl font-bold text-purple-700">
               ${summary.totalUsdtTransferred.toFixed(2)}
             </div>
             <div className="mt-1 text-xs text-purple-500">
               {summary.totalTransferCount} transfer{summary.totalTransferCount !== 1 && "s"}
+            </div>
+          </div>
+          <div className="rounded-xl border border-pink-200 bg-pink-50 p-5">
+            <div className="text-xs font-medium uppercase tracking-wider text-pink-600">
+              Donated to Causes
+            </div>
+            <div className="mt-2 text-2xl font-bold text-pink-700">
+              ${(summary.totalUsdtDonated ?? 0).toFixed(2)}
+            </div>
+            <div className="mt-1 text-xs text-pink-500">
+              {summary.totalDonationCount ?? 0} donation{(summary.totalDonationCount ?? 0) !== 1 && "s"}
             </div>
           </div>
         </div>
