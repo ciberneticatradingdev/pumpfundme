@@ -141,16 +141,18 @@ export default async function LandingPage() {
         <div className="pointer-events-none absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/20 to-transparent" />
 
         <div className="relative z-10 animate-fade-in-up">
-          {/* Title with logo inline */}
-          <h1 className="flex items-center justify-center gap-4 text-6xl font-extrabold tracking-tight sm:text-7xl sm:gap-5 lg:text-8xl lg:gap-6">
-            <Image
-              src="/logo.svg"
-              alt="PumpFundMe Logo"
-              width={80}
-              height={80}
-              priority
-              className="h-20 w-20 sm:h-28 sm:w-28 lg:h-36 lg:w-36"
-            />
+          {/* Logo */}
+          <Image
+            src="/logo.jpg"
+            alt="PumpFundMe Logo"
+            width={120}
+            height={120}
+            priority
+            className="mx-auto h-24 w-24 sm:h-32 sm:w-32 lg:h-40 lg:w-40 rounded-2xl shadow-lg"
+          />
+
+          {/* Title */}
+          <h1 className="mt-6 text-6xl font-extrabold tracking-tight sm:text-7xl lg:text-8xl">
             <span className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-500 bg-clip-text text-transparent animate-gradient">
               PumpFundMe
             </span>
