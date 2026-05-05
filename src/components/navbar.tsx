@@ -24,7 +24,7 @@ export function Navbar() {
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5">
           <Image
-            src="/logo.svg"
+            src="/logo.jpg"
             alt="PumpFundMe"
             width={32}
             height={32}
