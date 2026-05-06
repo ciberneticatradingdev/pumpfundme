@@ -18,6 +18,7 @@ export const config = {
   port: parseInt(process.env.PORT ?? '8000', 10),
   koloWallet: process.env.KOLO_WALLET ?? 'vcKapasn5HfXpXvdxjBLqrR35rQLb1WrEKZrM3MZiKi',
   swapThresholdSol: parseFloat(process.env.SWAP_THRESHOLD_SOL ?? '0.05'),
+  transferThresholdUsd: parseFloat(process.env.TRANSFER_THRESHOLD_USD ?? '5'),
   swapSlippageBps: parseInt(process.env.SWAP_SLIPPAGE_BPS ?? '50', 10),
   pipelineIntervalMs: parseInt(process.env.PIPELINE_INTERVAL_MS ?? '600000', 10),
   usdtMint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',

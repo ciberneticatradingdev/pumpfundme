@@ -179,9 +179,9 @@ async function runPipelineCycle(): Promise<void> {
 
   // Step 2: How much USDT from swaps is pending transfer?
   const pendingUsdt = await getPendingTransferUsdt();
-  console.log(`[pipeline] pending transfer from swaps: ${pendingUsdt.toFixed(2)} USDT`);
+  console.log(`[pipeline] pending transfer from swaps: ${pendingUsdt.toFixed(2)} USDT (threshold: $${config.transferThresholdUsd})`);
 
-  if (pendingUsdt > 0.01) { // min $0.01 to avoid dust transfers
+  if (pendingUsdt >= config.transferThresholdUsd) { // min $5 — Kolo card minimum
     // Convert to raw amount (6 decimals)
     const rawAmount = Math.floor(pendingUsdt * 1_000_000);
     console.log(`[pipeline] transferring ${pendingUsdt.toFixed(2)} USDT → Kolo`);
