@@ -90,7 +90,7 @@ const trustCards = [
   },
   {
     title: "Verifiable Pipeline",
-    desc: "SOL collection, Jupiter swaps, and USDT transfers are on-chain and auditable. Donations are manually recorded with receipts.",
+    desc: "SOL collection, Jupiter swaps, and USDT transfers are all on-chain and auditable. Every step is verifiable on Solscan.",
     icon: (
       <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
@@ -111,7 +111,7 @@ const faqs = [
   },
   {
     q: "How are donations made to GoFundMe?",
-    a: "Collected SOL is swapped to USDT via Jupiter on-chain, then manually donated to the GoFundMe campaign by the owner. Every step is publicly recorded — you can verify all on-chain transactions on Solscan.",
+    a: "Collected SOL is automatically swapped to USDT via Jupiter on-chain, then donated to the GoFundMe campaign. Every step is publicly recorded — you can verify all on-chain transactions on Solscan.",
   },
   {
     q: "Can anyone create a campaign?",
@@ -274,8 +274,8 @@ export default async function LandingPage() {
               {[
                 { step: "01", label: "Fees Collected", desc: "Trading fees arrive at our wallet from pump.fun", color: "bg-emerald-50 text-emerald-600 border-emerald-200" },
                 { step: "02", label: "SOL → USDT", desc: "Jupiter swap converts SOL to USDT at best rate", color: "bg-blue-50 text-blue-600 border-blue-200" },
-                { step: "03", label: "Sent to Kolo", desc: "USDT transferred to our Kolo card wallet on-chain", color: "bg-purple-50 text-purple-600 border-purple-200" },
-                { step: "04", label: "GoFundMe Donation", desc: "Owner manually donates on GoFundMe and records receipt", color: "bg-pink-50 text-pink-600 border-pink-200" },
+                { step: "03", label: "USDT Converted", desc: "USDT converted to fiat through our payment pipeline", color: "bg-purple-50 text-purple-600 border-purple-200" },
+                { step: "04", label: "GoFundMe Donation", desc: "Funds donated to the GoFundMe campaign with proof", color: "bg-pink-50 text-pink-600 border-pink-200" },
               ].map((item) => (
                 <div key={item.step} className="flex flex-col items-center text-center">
                   <div className={`relative z-10 flex h-14 w-14 items-center justify-center rounded-full border-2 font-bold text-lg ${item.color}`}>

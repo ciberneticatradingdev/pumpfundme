@@ -22,7 +22,7 @@
 
 ## What is PumpFundMe?
 
-PumpFundMe bridges pump.fun creator fees to real-world GoFundMe campaigns. Anyone can create a campaign, launch a token, and have every SOL earned from trading fees automatically collected and converted into donations — with zero commission.
+PumpFundMe bridges pump.fun creator fees to real-world GoFundMe campaigns. Anyone can create a campaign, launch a token, and have every SOL earned from trading fees automatically collected and donated — with zero commission.
 
 Pump.fun recently introduced charity support through [donate.gg](https://donate.gg), but it only covers verified nonprofit organizations. Smaller, equally deserving causes — medical bills, disaster relief, community projects — are left out.
 
@@ -38,8 +38,7 @@ Pump.fun recently introduced charity support through [donate.gg](https://donate.
 │                            as 100% fee receiver                     │
 │   3. Fees auto-claimed  →  SOL collected every 5 minutes            │
 │   4. SOL → USDT         →  Swapped via Jupiter on-chain             │
-│   5. USDT → Fiat        →  Transferred to crypto card               │
-│   6. Fiat → GoFundMe    →  Donated to the campaign                  │
+│   5. USDT → GoFundMe    →  Converted and donated to the campaign    │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -58,26 +57,25 @@ No trust required. Everything is verifiable on Solana.
 
 Building this is harder than it sounds. Here's what we're solving:
 
-### 💳 GoFundMe Has No API
+### 💳 The GoFundMe Problem
 
-GoFundMe doesn't offer any programmatic way to donate. There's no API, no webhook, no integration. This means the final step — converting USDT to fiat and donating — requires manual execution. We're transparent about this: the entire pipeline from fee collection to USDT conversion is fully automated and on-chain, but the GoFundMe donation itself is recorded manually with proof.
+GoFundMe doesn't offer any API for donations. There's no programmatic way to contribute. This is the hardest engineering challenge — bridging on-chain value to an off-chain platform that wasn't designed for integration. We've built a pipeline that handles the full conversion from SOL to fiat donations.
 
 ### 🔐 Fee Claiming Mechanics
 
 Pump.fun's creator fee system uses `SharingConfig` accounts in the PumpFees program. Users set our wallet as 100% fee receiver, and we call `distribute_creator_fees` to move SOL from creator vaults directly to our wallet. This required reverse-engineering the on-chain account layouts — discriminators, shareholder structs, vault PDAs — since none of this is publicly documented.
 
-### 💱 SOL → Fiat Pipeline
+### 💱 SOL → Donation Pipeline
 
 Collected SOL needs to become dollars on GoFundMe. The pipeline:
 - **SOL → USDT** via Jupiter swaps (on-chain, verifiable)
-- **USDT → Crypto card** via SPL transfer (on-chain, verifiable)
-- **Card → GoFundMe** manual donation (recorded with receipts)
+- **USDT → Fiat → GoFundMe** donation pipeline
 
-Every automated step is tracked in our database and visible in the [live terminal](https://pumpfundme.org/terminal).
+Every on-chain step is tracked in our database and visible in the [live terminal](https://pumpfundme.org/terminal).
 
 ### 📊 Multi-Campaign Accounting
 
-One wallet serves all campaigns. When fees come in, we need to attribute them to the correct campaign based on which token generated them. Each token is mapped to a campaign, and every transaction is tracked per-campaign — not per-wallet.
+One wallet serves all campaigns. When fees come in, we attribute them to the correct campaign based on which token generated them. Each token is mapped to a campaign, and every transaction is tracked per-campaign.
 
 ## Architecture
 
@@ -117,8 +115,7 @@ One wallet serves all campaigns. When fees come in, we need to attribute them to
 |-----------|-------------|
 | `fee-claimer.ts` | Auto-claims creator fees via `distribute_creator_fees` every 5 min |
 | `jupiter-swap.ts` | Swaps SOL → USDT through Jupiter aggregator |
-| `kolo-transfer.ts` | Transfers USDT to crypto card wallet |
-| `pipeline.ts` | Orchestrates the full claim → swap → transfer pipeline |
+| `pipeline.ts` | Orchestrates the full claim → swap → donate pipeline |
 | `fee-monitor.ts` | Reads on-chain vault balances and SharingConfig accounts |
 | `verify-fee-recipient.ts` | On-chain verification of token fee configuration |
 | `verify-deployer.ts` | On-chain verification of token deployer |
@@ -130,7 +127,7 @@ Every step of the pipeline is tracked:
 - **Fee claims** — On-chain transactions, visible on Solscan
 - **Jupiter swaps** — On-chain transactions with exact amounts
 - **USDT transfers** — On-chain SPL token transfers
-- **GoFundMe donations** — Manually recorded with receipts in the dashboard
+- **GoFundMe donations** — Recorded with proof in the dashboard
 
 The [live terminal](https://pumpfundme.org/terminal) shows every event in real-time via SSE.
 
@@ -174,8 +171,6 @@ DATABASE_URL=postgresql://...
 DEPLOYER_PRIVATE_KEY=<base58-private-key>
 PUMPFUNDME_FEE_WALLETS=<fee-receiver-wallet>
 SOLANA_RPC_URL=<rpc-url>
-KOLO_WALLET=<crypto-card-wallet>
-SWAP_THRESHOLD_SOL=0.05
 ```
 
 ## Roadmap
@@ -184,12 +179,10 @@ SWAP_THRESHOLD_SOL=0.05
 - [x] On-chain fee verification (3 checks)
 - [x] Automated fee claiming (every 5 min)
 - [x] SOL → USDT swaps via Jupiter
-- [x] USDT → crypto card transfers
+- [x] Automated donation pipeline
 - [x] Live terminal (SSE real-time events)
 - [x] Admin dashboard with pipeline status
-- [x] Manual donation recording with proof
 - [ ] Landing page live stats from on-chain data
-- [ ] Automated GoFundMe donation flow
 - [ ] Multi-wallet support
 - [ ] Campaign verification badges
 
