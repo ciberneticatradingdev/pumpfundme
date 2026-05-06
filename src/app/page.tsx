@@ -59,7 +59,7 @@ const steps = [
   {
     num: "03",
     title: "Fees → Donations",
-    desc: "Fees convert to USDT on-chain, then the owner donates to GoFundMe — 0% commission, ever.",
+    desc: "Fees convert to USDT on-chain and are donated to GoFundMe via our AI-powered payment agent — 0% commission, ever.",
     icon: (
       <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
@@ -111,7 +111,7 @@ const faqs = [
   },
   {
     q: "How are donations made to GoFundMe?",
-    a: "Collected SOL is automatically swapped to USDT via Jupiter on-chain, then donated to the GoFundMe campaign. Every step is publicly recorded — you can verify all on-chain transactions on Solscan.",
+    a: "Collected SOL is swapped to USDT via Jupiter on-chain, transferred to our Kolo card, and donated to the GoFundMe campaign by our AI payment agent. Every step is publicly recorded — you can verify on-chain transactions on Solscan.",
   },
   {
     q: "Can anyone create a campaign?",
@@ -274,8 +274,8 @@ export default async function LandingPage() {
               {[
                 { step: "01", label: "Fees Collected", desc: "Trading fees arrive at our wallet from pump.fun", color: "bg-emerald-50 text-emerald-600 border-emerald-200" },
                 { step: "02", label: "SOL → USDT", desc: "Jupiter swap converts SOL to USDT at best rate", color: "bg-blue-50 text-blue-600 border-blue-200" },
-                { step: "03", label: "USDT Converted", desc: "USDT converted to fiat through our payment pipeline", color: "bg-purple-50 text-purple-600 border-purple-200" },
-                { step: "04", label: "GoFundMe Donation", desc: "Funds donated to the GoFundMe campaign with proof", color: "bg-pink-50 text-pink-600 border-pink-200" },
+                { step: "03", label: "Sent to Kolo", desc: "USDT transferred to our Kolo card on-chain", color: "bg-purple-50 text-purple-600 border-purple-200" },
+                { step: "04", label: "GoFundMe Donation", desc: "AI payment agent donates to GoFundMe with proof", color: "bg-pink-50 text-pink-600 border-pink-200" },
               ].map((item) => (
                 <div key={item.step} className="flex flex-col items-center text-center">
                   <div className={`relative z-10 flex h-14 w-14 items-center justify-center rounded-full border-2 font-bold text-lg ${item.color}`}>

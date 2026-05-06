@@ -38,7 +38,8 @@ Pump.fun recently introduced charity support through [donate.gg](https://donate.
 │                            as 100% fee receiver                     │
 │   3. Fees auto-claimed  →  SOL collected every 5 minutes            │
 │   4. SOL → USDT         →  Swapped via Jupiter on-chain             │
-│   5. USDT → GoFundMe    →  Converted and donated to the campaign    │
+│   5. USDT → Kolo card   →  Transferred on-chain to Kolo card        │
+│   6. Fiat → GoFundMe    →  AI payment agent donates to the campaign  │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -59,7 +60,7 @@ Building this is harder than it sounds. Here's what we're solving:
 
 ### 💳 The GoFundMe Problem
 
-GoFundMe doesn't offer any API for donations. There's no programmatic way to contribute. This is the hardest engineering challenge — bridging on-chain value to an off-chain platform that wasn't designed for integration. We've built a pipeline that handles the full conversion from SOL to fiat donations.
+GoFundMe doesn't offer any API for donations. There's no programmatic way to contribute. This is the hardest engineering challenge — bridging on-chain value to an off-chain platform that wasn't designed for integration. We've built a pipeline that handles the full conversion from SOL to fiat, with an AI-powered payment agent (built on OpenClaw) that manages the final GoFundMe donations autonomously.
 
 ### 🔐 Fee Claiming Mechanics
 
@@ -69,7 +70,8 @@ Pump.fun's creator fee system uses `SharingConfig` accounts in the PumpFees prog
 
 Collected SOL needs to become dollars on GoFundMe. The pipeline:
 - **SOL → USDT** via Jupiter swaps (on-chain, verifiable)
-- **USDT → Fiat → GoFundMe** donation pipeline
+- **USDT → Kolo card** via SPL transfer (on-chain, verifiable)
+- **Fiat → GoFundMe** via AI payment agent (OpenClaw subagent)
 
 Every on-chain step is tracked in our database and visible in the [live terminal](https://pumpfundme.org/terminal).
 
@@ -127,7 +129,7 @@ Every step of the pipeline is tracked:
 - **Fee claims** — On-chain transactions, visible on Solscan
 - **Jupiter swaps** — On-chain transactions with exact amounts
 - **USDT transfers** — On-chain SPL token transfers
-- **GoFundMe donations** — Recorded with proof in the dashboard
+- **GoFundMe donations** — Executed by AI payment agent, recorded with proof in the dashboard
 
 The [live terminal](https://pumpfundme.org/terminal) shows every event in real-time via SSE.
 
@@ -179,7 +181,8 @@ SOLANA_RPC_URL=<rpc-url>
 - [x] On-chain fee verification (3 checks)
 - [x] Automated fee claiming (every 5 min)
 - [x] SOL → USDT swaps via Jupiter
-- [x] Automated donation pipeline
+- [x] USDT → Kolo card transfers
+- [x] AI payment agent for GoFundMe donations
 - [x] Live terminal (SSE real-time events)
 - [x] Admin dashboard with pipeline status
 - [ ] Landing page live stats from on-chain data
