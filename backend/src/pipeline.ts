@@ -26,7 +26,7 @@ function getKeypair(): Keypair {
 export interface PipelineStatus {
   solBalanceFeeWallet: number;
   transferThresholdSol: number;
-  pendingByCampaign: Array<{ campaignId: string; pendingSol: number }>;
+  pendingByCampaign: Array<{ campaignId: string; campaignName: string; pendingSol: number; ready: boolean }>;
   totalPendingSol: number;
   lastRunAt: string | null;
   lastTransferAt: string | null;
@@ -46,14 +46,8 @@ interface CampaignPending {
  *
  * For each campaign:
  *   pending = sum(FEE_RECEIVED.amountSol) - sum(SOL_SWAP.amountSol) - sum(USDT_TRANSFER.amountSol)
- *
- * This handles:
- * - Old system: SOL_SWAP records offset the claimed SOL
- * - New system: USDT_TRANSFER records (with amountSol > 0) offset claimed SOL
- * - Corrections: negative USDT_TRANSFER.amountSol reduces the handled total
  */
 async function getPendingByCampaign(): Promise<CampaignPending[]> {
-  // Get all campaigns that have claims
   const campaigns = await db.transaction.groupBy({
     by: ['campaignId'],
     where: { type: 'FEE_RECEIVED', status: 'CONFIRMED', campaignId: { not: null as unknown as undefined } },
@@ -68,7 +62,6 @@ async function getPendingByCampaign(): Promise<CampaignPending[]> {
 
     const claimed = camp._sum.amountSol ?? 0;
 
-    // Get SOL already handled (swaps + transfers, including corrections)
     const [swapped, transferred] = await Promise.all([
       db.transaction.aggregate({
         where: { type: 'SOL_SWAP', status: 'CONFIRMED', campaignId },
@@ -83,8 +76,7 @@ async function getPendingByCampaign(): Promise<CampaignPending[]> {
     const handled = (swapped._sum.amountSol ?? 0) + (transferred._sum.amountSol ?? 0);
     const pending = Math.max(0, claimed - handled);
 
-    if (pending > 0.000001) { // ignore dust
-      // Get campaign name for logging
+    if (pending > 0.000001) {
       const campaign = await db.campaign.findUnique({
         where: { id: campaignId },
         select: { name: true },
@@ -106,6 +98,7 @@ async function getPendingByCampaign(): Promise<CampaignPending[]> {
  */
 export async function getPipelineStatus(): Promise<PipelineStatus> {
   const keypair = getKeypair();
+  const threshold = config.transferThresholdSol;
 
   const [solBalance, pending] = await Promise.all([
     connection.getBalance(keypair.publicKey, 'confirmed'),
@@ -114,8 +107,13 @@ export async function getPipelineStatus(): Promise<PipelineStatus> {
 
   return {
     solBalanceFeeWallet: solBalance / LAMPORTS_PER_SOL,
-    transferThresholdSol: config.swapThresholdSol,
-    pendingByCampaign: pending.map(p => ({ campaignId: p.campaignId, pendingSol: p.pendingSol })),
+    transferThresholdSol: threshold,
+    pendingByCampaign: pending.map(p => ({
+      campaignId: p.campaignId,
+      campaignName: p.campaignName,
+      pendingSol: p.pendingSol,
+      ready: p.pendingSol >= threshold,
+    })),
     totalPendingSol: pending.reduce((s, p) => s + p.pendingSol, 0),
     lastRunAt: lastRunAt?.toISOString() ?? null,
     lastTransferAt: lastTransferAt?.toISOString() ?? null,
@@ -125,64 +123,74 @@ export async function getPipelineStatus(): Promise<PipelineStatus> {
 /**
  * Run one pipeline cycle:
  * 1. Calculate pending claims per campaign
- * 2. If total pending ≥ threshold → send ONE on-chain tx for the total
- * 3. Create separate DB records per campaign for their exact share
+ * 2. Filter: only campaigns that individually meet the threshold
+ * 3. Send ONE on-chain tx for the sum of qualifying campaigns
+ * 4. Create separate DB records per campaign for their exact share
  */
 async function runPipelineCycle(): Promise<void> {
   getKeypair();
   lastRunAt = new Date();
+  const threshold = config.transferThresholdSol;
 
   console.log(`[pipeline] --- cycle start ---`);
 
   // Step 1: Get pending per campaign
-  const pending = await getPendingByCampaign();
-  const totalPendingSol = pending.reduce((s, p) => s + p.pendingSol, 0);
-  const totalPendingLamports = Math.floor(totalPendingSol * LAMPORTS_PER_SOL);
-  const thresholdLamports = Math.floor(config.swapThresholdSol * LAMPORTS_PER_SOL);
+  const allPending = await getPendingByCampaign();
 
-  if (pending.length === 0) {
+  if (allPending.length === 0) {
     console.log(`[pipeline] no pending claims — skipping`);
     console.log(`[pipeline] --- cycle end ---`);
     return;
   }
 
-  for (const p of pending) {
-    console.log(`[pipeline] pending: ${p.campaignName} → ${p.pendingSol.toFixed(6)} SOL`);
-  }
-  console.log(`[pipeline] total pending: ${totalPendingSol.toFixed(6)} SOL (threshold: ${config.swapThresholdSol})`);
+  // Step 2: Filter campaigns that meet the per-campaign threshold
+  const ready: CampaignPending[] = [];
+  const waiting: CampaignPending[] = [];
 
-  if (totalPendingLamports < thresholdLamports) {
-    console.log(`[pipeline] below threshold — skipping`);
+  for (const p of allPending) {
+    if (p.pendingSol >= threshold) {
+      ready.push(p);
+      console.log(`[pipeline] ✅ ${p.campaignName}: ${p.pendingSol.toFixed(6)} SOL — READY`);
+    } else {
+      waiting.push(p);
+      console.log(`[pipeline] ⏳ ${p.campaignName}: ${p.pendingSol.toFixed(6)} SOL — waiting (need ${threshold})`);
+    }
+  }
+
+  if (ready.length === 0) {
+    console.log(`[pipeline] no campaigns at threshold — skipping`);
     console.log(`[pipeline] --- cycle end ---`);
     return;
   }
 
-  // Step 2: Verify wallet balance covers the pending amount
+  // Step 3: Calculate total to transfer (only ready campaigns)
+  const totalSol = ready.reduce((s, p) => s + p.pendingSol, 0);
+  const totalLamports = Math.floor(totalSol * LAMPORTS_PER_SOL);
+
+  // Verify wallet balance
   const keypair = getKeypair();
   const walletBalance = await connection.getBalance(keypair.publicKey, 'confirmed');
   const maxSend = walletBalance - GAS_RESERVE_LAMPORTS;
 
-  if (maxSend < thresholdLamports) {
-    console.log(`[pipeline] wallet too low: ${(walletBalance / LAMPORTS_PER_SOL).toFixed(6)} SOL (need ${totalPendingSol.toFixed(6)} + gas)`);
+  if (maxSend < Math.floor(threshold * LAMPORTS_PER_SOL)) {
+    console.log(`[pipeline] wallet too low: ${(walletBalance / LAMPORTS_PER_SOL).toFixed(6)} SOL`);
     console.log(`[pipeline] --- cycle end ---`);
     return;
   }
 
-  // Cap at wallet balance if pending exceeds it (shouldn't happen normally)
-  const transferLamports = Math.min(totalPendingLamports, maxSend);
-  const transferSol = transferLamports / LAMPORTS_PER_SOL;
+  // Cap at wallet balance
+  const transferLamports = Math.min(totalLamports, maxSend);
 
-  // If wallet can't cover all pending, scale each campaign proportionally
-  const scale = transferLamports < totalPendingLamports
-    ? transferLamports / totalPendingLamports
-    : 1;
-
+  // If wallet can't cover all ready campaigns, scale proportionally
+  const scale = transferLamports < totalLamports ? transferLamports / totalLamports : 1;
   if (scale < 1) {
-    console.log(`[pipeline] wallet can only cover ${(scale * 100).toFixed(1)}% of pending — scaling proportionally`);
+    console.log(`[pipeline] wallet covers ${(scale * 100).toFixed(1)}% — scaling`);
   }
 
-  // Step 3: Send ONE on-chain transaction
-  console.log(`[pipeline] transferring ${transferSol.toFixed(6)} SOL → Kolo`);
+  // Step 4: Send ONE on-chain transaction
+  const transferSol = transferLamports / LAMPORTS_PER_SOL;
+  console.log(`[pipeline] transferring ${transferSol.toFixed(6)} SOL → Kolo (${ready.length} campaign${ready.length > 1 ? 's' : ''})`);
+
   const result = await transferSolToKolo(transferLamports);
 
   if (!result.success) {
@@ -194,88 +202,52 @@ async function runPipelineCycle(): Promise<void> {
   lastTransferAt = new Date();
   console.log(`[pipeline] transfer OK: ${result.amountSol.toFixed(6)} SOL ($${result.amountUsd.toFixed(2)})`);
 
-  // Step 4: Create per-campaign DB records
-  // Use actual transferred amount and scale if needed
-  const actualScale = result.amountSol / totalPendingSol;
+  // Step 5: Create per-campaign DB records
+  const actualScale = result.amountSol / totalSol;
 
-  for (const p of pending) {
+  for (let i = 0; i < ready.length; i++) {
+    const p = ready[i];
     const campSol = p.pendingSol * actualScale;
     const campUsd = campSol * result.solPrice;
 
-    try {
-      await db.transaction.create({
+    // First campaign uses the real txSignature, others get a suffixed version (unique constraint)
+    const txSig = i === 0 ? result.txSignature : `${result.txSignature}-${p.campaignId.slice(-8)}`;
+
+    await db.transaction.create({
+      data: {
+        type: 'USDT_TRANSFER',
+        amountSol: campSol,
+        amountUsd: campUsd,
+        txSignature: txSig,
+        status: 'CONFIRMED',
+        campaignId: p.campaignId,
+        metadata: {
+          fromWallet: keypair.publicKey.toBase58(),
+          toWallet: config.koloWallet,
+          solPriceUsd: result.solPrice,
+          transferType: 'SOL_DIRECT',
+          campaignShare: p.pendingSol,
+          totalTransferred: result.amountSol,
+          ...(i > 0 ? { parentTxSignature: result.txSignature } : {}),
+        },
+      } as any,
+    });
+
+    await db.event.create({
+      data: {
+        type: 'sol_transfer',
+        campaignId: p.campaignId,
+        message: `Transferred ${campSol.toFixed(6)} SOL ($${campUsd.toFixed(2)}) to Kolo wallet`,
         data: {
-          type: 'USDT_TRANSFER',
-          amountSol: campSol,
-          amountUsd: campUsd,
           txSignature: result.txSignature,
-          status: 'CONFIRMED',
-          campaignId: p.campaignId,
-          metadata: {
-            fromWallet: keypair.publicKey.toBase58(),
-            toWallet: config.koloWallet,
-            solPriceUsd: result.solPrice,
-            transferType: 'SOL_DIRECT',
-            campaignShare: p.pendingSol,
-            totalTransferred: result.amountSol,
-          },
-        } as any,
-      });
-
-      await db.event.create({
-        data: {
-          type: 'sol_transfer',
-          campaignId: p.campaignId,
-          message: `Transferred ${campSol.toFixed(6)} SOL ($${campUsd.toFixed(2)}) to Kolo wallet`,
-          data: {
-            txSignature: result.txSignature,
-            amountSol: campSol,
-            amountUsd: campUsd,
-            solPriceUsd: result.solPrice,
-          },
-        },
-      });
-
-      console.log(`[pipeline] ✅ ${p.campaignName}: ${campSol.toFixed(6)} SOL ($${campUsd.toFixed(2)})`);
-    } catch (err) {
-      // txSignature unique constraint — if multiple campaigns share same tx, append campaign suffix
-      const uniqueSig = `${result.txSignature}-${p.campaignId.slice(-8)}`;
-      await db.transaction.create({
-        data: {
-          type: 'USDT_TRANSFER',
           amountSol: campSol,
           amountUsd: campUsd,
-          txSignature: uniqueSig,
-          status: 'CONFIRMED',
-          campaignId: p.campaignId,
-          metadata: {
-            fromWallet: keypair.publicKey.toBase58(),
-            toWallet: config.koloWallet,
-            solPriceUsd: result.solPrice,
-            transferType: 'SOL_DIRECT',
-            campaignShare: p.pendingSol,
-            totalTransferred: result.amountSol,
-            parentTxSignature: result.txSignature,
-          },
-        } as any,
-      });
-
-      await db.event.create({
-        data: {
-          type: 'sol_transfer',
-          campaignId: p.campaignId,
-          message: `Transferred ${campSol.toFixed(6)} SOL ($${campUsd.toFixed(2)}) to Kolo wallet`,
-          data: {
-            txSignature: result.txSignature,
-            amountSol: campSol,
-            amountUsd: campUsd,
-            solPriceUsd: result.solPrice,
-          },
+          solPriceUsd: result.solPrice,
         },
-      });
+      },
+    });
 
-      console.log(`[pipeline] ✅ ${p.campaignName}: ${campSol.toFixed(6)} SOL ($${campUsd.toFixed(2)})`);
-    }
+    console.log(`[pipeline] ✅ ${p.campaignName}: ${campSol.toFixed(6)} SOL ($${campUsd.toFixed(2)})`);
   }
 
   console.log(`[pipeline] --- cycle end ---`);
@@ -293,8 +265,8 @@ export async function startPipeline(): Promise<void> {
     return;
   }
 
-  console.log(`[pipeline] mode: SOL DIRECT — per-campaign attribution`);
-  console.log(`[pipeline] interval: ${config.pipelineIntervalMs}ms | threshold: ${config.swapThresholdSol} SOL | kolo: ${config.koloWallet.slice(0, 10)}...`);
+  console.log(`[pipeline] mode: SOL DIRECT — per-campaign threshold (${config.transferThresholdSol} SOL each)`);
+  console.log(`[pipeline] interval: ${config.pipelineIntervalMs}ms | kolo: ${config.koloWallet.slice(0, 10)}...`);
 
   try {
     await runPipelineCycle();
