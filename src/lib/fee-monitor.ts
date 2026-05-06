@@ -1,5 +1,6 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getConnection } from "./solana";
+import { PUMPFUNDME_FEE_WALLETS } from "./config";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -16,13 +17,7 @@ const MULTI_ACCT_CHUNK = 100;
 const SHARING_CONFIG_TTL = 5 * 60 * 1000; // 5 min
 const ALL_FEES_TTL = 30 * 1000; // 30 s
 
-const PUMPFUNDME_FEE_WALLETS = (
-  process.env.PUMPFUNDME_FEE_WALLETS ||
-  "HrA44RKEy2xs5RxVTKZcPgx5hCrmW12nkLhFW55Us3Mw"
-)
-  .split(",")
-  .map((w) => w.trim())
-  .filter(Boolean);
+// Fee wallets imported from @/lib/config
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

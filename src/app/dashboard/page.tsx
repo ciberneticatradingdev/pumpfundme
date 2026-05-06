@@ -5,16 +5,16 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { CampaignList } from "./campaign-list";
 import { FeesDashboard } from "@/components/fees-dashboard";
-
-const ADMIN_WALLETS = ["HrA44RKEy2xs5RxVTKZcPgx5hCrmW12nkLhFW55Us3Mw"];
+import { PUMPFUNDME_FEE_WALLETS } from "@/lib/config";
 
 function checkIsAdmin(wallet: string): boolean {
-  return ADMIN_WALLETS.includes(wallet);
+  // Admin = fee wallet holders. Extra admins via ADMIN_WALLETS env on server-side only.
+  return PUMPFUNDME_FEE_WALLETS.includes(wallet);
 }
 
 interface PipelineStatus {
-  solBalanceHrA44R?: number;
-  usdtBalanceHrA44R?: number;
+  solBalanceFeeWallet?: number;
+  usdtBalanceFeeWallet?: number;
   usdtBalanceKolo?: number;
   pendingSwapSol?: number;
   lastSwapAt?: string | null;
@@ -76,19 +76,19 @@ function PipelineStatusCard({ walletAddress }: { walletAddress: string }) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-500">
-                SOL in HrA44R
+                SOL in Fee Wallet
               </div>
               <div className="mt-2 font-mono text-2xl font-bold text-emerald-700">
-                {status.solBalanceHrA44R != null ? status.solBalanceHrA44R.toFixed(4) : "—"} SOL
+                {status.solBalanceFeeWallet != null ? status.solBalanceFeeWallet.toFixed(4) : "—"} SOL
               </div>
               <div className="mt-1 text-[11px] text-emerald-400">Fee collection wallet</div>
             </div>
             <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-blue-500">
-                USDT in HrA44R
+                USDT in Fee Wallet
               </div>
               <div className="mt-2 font-mono text-2xl font-bold text-blue-700">
-                ${status.usdtBalanceHrA44R != null ? status.usdtBalanceHrA44R.toFixed(2) : "—"}
+                ${status.usdtBalanceFeeWallet != null ? status.usdtBalanceFeeWallet.toFixed(2) : "—"}
               </div>
               <div className="mt-1 text-[11px] text-blue-400">Post-swap balance</div>
             </div>

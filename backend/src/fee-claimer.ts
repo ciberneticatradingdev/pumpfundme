@@ -80,7 +80,7 @@ export async function getCreatorVaultBalance(sharingConfigAddr: string): Promise
 /**
  * Claim fees for a single mint using distribute_creator_fees.
  *
- * distribute_creator_fees moves SOL from the creator vault directly to HrA44R
+ * distribute_creator_fees moves SOL from the creator vault directly to fee wallet
  * (our wallet, which is the 100% shareholder in the SharingConfig).
  * No claim_social_fee_pda or pump.fun authority needed.
  */
@@ -106,7 +106,7 @@ export async function claimForMint(mintAddress: string, sharingConfigAddr: strin
   const creatorVault = getCreatorVaultPDA(sharingConfig);
   const eventAuth = getPumpFunEventAuthority();
 
-  // distribute_creator_fees: moves SOL from creator vault → feeWallet (HrA44R shareholder)
+  // distribute_creator_fees: moves SOL from creator vault → feeWallet (fee wallet shareholder)
   const distributeIx = new TransactionInstruction({
     programId: PUMP_FUN_PROGRAM,
     keys: [

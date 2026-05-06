@@ -26,8 +26,8 @@ function getKeypair(): Keypair {
 }
 
 export interface PipelineStatus {
-  solBalanceHrA44R: number;
-  usdtBalanceHrA44R: number;
+  solBalanceFeeWallet: number;
+  usdtBalanceFeeWallet: number;
   usdtBalanceKolo: number;
   swapThresholdSol: number;
   pendingSwapSol: number;
@@ -90,7 +90,7 @@ export async function getPipelineStatus(): Promise<PipelineStatus> {
   const keypair = getKeypair();
   const koloWallet = new PublicKey(config.koloWallet);
 
-  const [solBalance, usdtHrA44R, usdtKolo, pendingSwapSol, pendingTransferUsdt] = await Promise.all([
+  const [solBalance, usdtFeeWallet, usdtKolo, pendingSwapSol, pendingTransferUsdt] = await Promise.all([
     connection.getBalance(keypair.publicKey, 'confirmed'),
     getSwapUsdtBalance(keypair.publicKey),
     getTransferUsdtBalance(koloWallet),
@@ -99,8 +99,8 @@ export async function getPipelineStatus(): Promise<PipelineStatus> {
   ]);
 
   return {
-    solBalanceHrA44R: solBalance / LAMPORTS_PER_SOL,
-    usdtBalanceHrA44R: usdtHrA44R,
+    solBalanceFeeWallet: solBalance / LAMPORTS_PER_SOL,
+    usdtBalanceFeeWallet: usdtFeeWallet,
     usdtBalanceKolo: usdtKolo,
     swapThresholdSol: config.swapThresholdSol,
     pendingSwapSol,

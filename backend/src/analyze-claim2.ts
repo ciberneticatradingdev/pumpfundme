@@ -48,10 +48,10 @@ async function main() {
     console.log(`  ${s.signature.slice(0, 30)}... slot=${s.slot} err=${s.err ? JSON.stringify(s.err) : 'none'}`);
   }
   
-  // Also check HrA44R (GitHub claim wallet) for claim txs
+  // Also check fee wallet (GitHub claim wallet) for claim txs
   await new Promise(r => setTimeout(r, 1000));
   
-  const GITHUB_WALLET = new PublicKey("HrA44RKEy2xs5RxVTKZcPgx5hCrmW12nkLhFW55Us3Mw");
+  const GITHUB_WALLET = new PublicKey("C9edELq7XNKm7rfLsDLSoZBFzNYg1WoybCZdWtg2xxzt");
   const sigs2 = await conn.getSignaturesForAddress(GITHUB_WALLET, { limit: 20 });
   console.log(`\n=== ALL TXS ON GITHUB WALLET: ${sigs2.length} ===`);
   for (const s of sigs2) {

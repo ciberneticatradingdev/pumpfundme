@@ -53,7 +53,7 @@ export async function getUsdtBalance(owner: PublicKey): Promise<number> {
 }
 
 /**
- * Transfer ALL USDT from HrA44R → Kolo wallet.
+ * Transfer ALL USDT from fee wallet → Kolo wallet.
  * Creates Kolo's USDT ATA if it doesn't exist.
  */
 export async function transferUsdtToKolo(amountRaw?: number): Promise<TransferResult> {

@@ -8,8 +8,8 @@ export const config = {
   databaseUrl: requireEnv('DATABASE_URL'),
   solanaRpcUrl: process.env.SOLANA_RPC_URL ?? 'https://api.mainnet-beta.solana.com',
   deployerPrivateKey: process.env.DEPLOYER_PRIVATE_KEY,
-  // HrA44R is our wallet — it is the 100% shareholder in SharingConfig and receives SOL via distribute_creator_fees
-  feeWallet: process.env.PUMPFUNDME_FEE_WALLETS ?? 'HrA44RKEy2xs5RxVTKZcPgx5hCrmW12nkLhFW55Us3Mw',
+  // Fee wallet — 100% shareholder in SharingConfig, receives SOL via distribute_creator_fees
+  feeWallet: process.env.PUMPFUNDME_FEE_WALLETS ?? 'C9edELq7XNKm7rfLsDLSoZBFzNYg1WoybCZdWtg2xxzt',
   pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS ?? '30000', 10),
   claimIntervalMs: parseInt(process.env.CLAIM_INTERVAL_MS ?? '300000', 10), // 5 min
   cacheRefreshMs: parseInt(process.env.CACHE_REFRESH_MS ?? '300000', 10), // 5 min
