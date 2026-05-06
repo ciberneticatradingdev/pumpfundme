@@ -9,7 +9,6 @@ import {
 } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { config } from './config';
-import { db } from './db';
 import { withRetry } from './utils';
 
 const connection = new Connection(config.solanaRpcUrl, 'confirmed');
@@ -19,6 +18,7 @@ export interface TransferResult {
   txSignature: string;
   amountSol: number;
   amountUsd: number;
+  solPrice: number;
   error?: string;
 }
 
@@ -37,7 +37,7 @@ function getKeypair(): Keypair {
  * Fetch current SOL price in USD.
  * Tries CoinGecko first, falls back to Jupiter quote.
  */
-async function getSolPriceUsd(): Promise<number> {
+export async function getSolPriceUsd(): Promise<number> {
   // Try CoinGecko
   try {
     const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
@@ -62,22 +62,16 @@ async function getSolPriceUsd(): Promise<number> {
 }
 
 /**
- * Transfer SOL from fee wallet → Kolo wallet.
- * Records the USD value at transfer time.
- *
- * @param amountLamports - amount to transfer; if omitted, sends all available minus gas reserve
+ * Transfer SOL from fee wallet → Kolo wallet (on-chain only, no DB records).
+ * The pipeline handles per-campaign DB attribution separately.
  */
-export async function transferSolToKolo(amountLamports?: number, campaignId?: string): Promise<TransferResult> {
+export async function transferSolToKolo(amountLamports: number): Promise<TransferResult> {
   const keypair = getKeypair();
   const koloWallet = new PublicKey(config.koloWallet);
   const GAS_RESERVE = 10_000_000; // 0.01 SOL
 
   try {
     const walletBalance = await connection.getBalance(keypair.publicKey, 'confirmed');
-
-    if (!amountLamports) {
-      amountLamports = walletBalance - GAS_RESERVE;
-    }
 
     // Cap at what we actually have (minus gas)
     const maxSend = walletBalance - GAS_RESERVE;
@@ -87,7 +81,7 @@ export async function transferSolToKolo(amountLamports?: number, campaignId?: st
     }
 
     if (amountLamports <= 0) {
-      return { success: false, txSignature: '', amountSol: 0, amountUsd: 0, error: 'No SOL to transfer' };
+      return { success: false, txSignature: '', amountSol: 0, amountUsd: 0, solPrice: 0, error: 'No SOL to transfer' };
     }
 
     const amountSol = amountLamports / LAMPORTS_PER_SOL;
@@ -96,7 +90,7 @@ export async function transferSolToKolo(amountLamports?: number, campaignId?: st
     const solPrice = await withRetry(() => getSolPriceUsd(), 3, 500);
     const amountUsd = amountSol * solPrice;
 
-    console.log(`[transfer] sending ${amountSol.toFixed(6)} SOL ($${amountUsd.toFixed(2)} @ $${solPrice.toFixed(2)}/SOL) → Kolo (${config.koloWallet.slice(0, 10)}...)`);
+    console.log(`[transfer] sending ${amountSol.toFixed(6)} SOL ($${amountUsd.toFixed(2)} @ $${solPrice.toFixed(2)}/SOL) → Kolo`);
 
     const instruction = SystemProgram.transfer({
       fromPubkey: keypair.publicKey,
@@ -125,45 +119,10 @@ export async function transferSolToKolo(amountLamports?: number, campaignId?: st
 
     console.log(`[transfer] ✅ sent ${amountSol.toFixed(6)} SOL ($${amountUsd.toFixed(2)}) → Kolo | tx: ${txSignature.slice(0, 20)}...`);
 
-    // Log to DB — record as USD value at transfer time
-    await db.transaction.create({
-      data: {
-        type: 'USDT_TRANSFER',
-        amountSol,
-        amountUsd: amountUsd,
-        txSignature,
-        status: 'CONFIRMED',
-        ...(campaignId ? { campaignId } : {}),
-        metadata: {
-          fromWallet: keypair.publicKey.toBase58(),
-          toWallet: config.koloWallet,
-          amountLamports,
-          solPriceUsd: solPrice,
-          transferType: 'SOL_DIRECT',
-        },
-      } as any,
-    });
-
-    await db.event.create({
-      data: {
-        type: 'sol_transfer',
-        message: `Transferred ${amountSol.toFixed(6)} SOL ($${amountUsd.toFixed(2)}) to Kolo wallet`,
-        ...(campaignId ? { campaignId } : {}),
-        data: {
-          txSignature,
-          amountSol,
-          amountUsd,
-          solPriceUsd: solPrice,
-          fromWallet: keypair.publicKey.toBase58(),
-          toWallet: config.koloWallet,
-        },
-      },
-    });
-
-    return { success: true, txSignature, amountSol, amountUsd };
+    return { success: true, txSignature, amountSol, amountUsd, solPrice };
   } catch (err: unknown) {
     const error = err instanceof Error ? err.message : String(err);
     console.error(`[transfer] ❌ failed:`, error);
-    return { success: false, txSignature: '', amountSol: 0, amountUsd: 0, error };
+    return { success: false, txSignature: '', amountSol: 0, amountUsd: 0, solPrice: 0, error };
   }
 }
