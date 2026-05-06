@@ -50,8 +50,8 @@ interface Campaign {
 const TX_TYPE_LABELS: Record<string, string> = {
   FEE_RECEIVED: "Fee Claimed",
   SOL_SWAP: "SOL → USDT",
-  USDT_TRANSFER: "USDT → Kolo",
-  SOL_TRANSFER: "SOL Transfer",
+  USDT_TRANSFER: "SOL → Kolo",
+  SOL_TRANSFER: "SOL → Kolo",
   DONATION: "Donation",
 };
 
@@ -59,13 +59,12 @@ const TX_TYPE_COLORS: Record<string, string> = {
   FEE_RECEIVED: "bg-emerald-100 text-emerald-700",
   SOL_SWAP: "bg-blue-100 text-blue-700",
   USDT_TRANSFER: "bg-purple-100 text-purple-700",
-  SOL_TRANSFER: "bg-gray-100 text-gray-700",
+  SOL_TRANSFER: "bg-purple-100 text-purple-700",
   DONATION: "bg-pink-100 text-pink-700",
 };
 
 const PIPELINE_STEPS = [
   { type: "FEE_RECEIVED", label: "Fees Claimed", icon: "💰" },
-  { type: "SOL_SWAP", label: "SOL Swapped", icon: "🔄" },
   { type: "USDT_TRANSFER", label: "Sent to Kolo", icon: "📤" },
   { type: "DONATION", label: "Donated", icon: "❤️" },
 ];
@@ -73,6 +72,7 @@ const PIPELINE_STEPS = [
 const typeColors: Record<string, string> = {
   fee_received: "text-emerald-400",
   sol_transfer: "text-blue-400",
+  sol_swap: "text-blue-400",
   donation: "text-purple-400",
   campaign_created: "text-yellow-400",
   token_registered: "text-cyan-400",
@@ -163,6 +163,16 @@ export default function CampaignDetailPage({
     );
   }
 
+  // Compute real SOL received from transactions (not the possibly-stale DB field)
+  const realSolReceived = transactions
+    .filter((tx) => tx.type === "FEE_RECEIVED" && tx.status === "CONFIRMED")
+    .reduce((sum, tx) => sum + tx.amountSol, 0);
+
+  // Compute real USD transferred
+  const realUsdTransferred = transactions
+    .filter((tx) => (tx.type === "USDT_TRANSFER" || tx.type === "SOL_TRANSFER") && tx.status === "CONFIRMED")
+    .reduce((sum, tx) => sum + (tx.amountUsd ?? 0), 0);
+
   // Compute pipeline progress
   const pipelineProgress = PIPELINE_STEPS.map((step) => {
     const stepTxs = transactions.filter(
@@ -227,7 +237,7 @@ export default function CampaignDetailPage({
             <div>
               <p className="text-[10px] uppercase tracking-wider text-gray-400">SOL Received</p>
               <p className="mt-0.5 font-mono text-xl font-bold text-emerald-600">
-                {campaign.totalSolReceived.toFixed(4)}
+                {realSolReceived.toFixed(4)}
               </p>
             </div>
           </div>
@@ -236,6 +246,22 @@ export default function CampaignDetailPage({
         <div className="glass rounded-xl p-5">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-50 text-purple-500">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-gray-400">USD Transferred</p>
+              <p className="mt-0.5 font-mono text-xl font-bold">
+                ${realUsdTransferred.toFixed(2)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="glass rounded-xl p-5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-pink-50 text-pink-500">
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
               </svg>
@@ -248,32 +274,71 @@ export default function CampaignDetailPage({
             </div>
           </div>
         </div>
-
-        <div className="glass rounded-xl p-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-50 text-cyan-500">
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400">Tokens Linked</p>
-              <p className="mt-0.5 font-mono text-xl font-bold">{campaign.tokens.length}</p>
-            </div>
-          </div>
-        </div>
       </div>
+
+      {/* Verified Tokens — prominent with CA and pump.fun links */}
+      {campaign.tokens.length > 0 && (
+        <div className="mt-8 space-y-3">
+          {campaign.tokens.map((t) => (
+            <div key={t.id} className="glass rounded-xl p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-50 text-cyan-600">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-900">
+                        {t.name || t.symbol || "Token"}
+                      </span>
+                      {t.symbol && t.name && (
+                        <span className="text-xs text-gray-400">${t.symbol}</span>
+                      )}
+                      <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+                        ✓ Verified
+                      </span>
+                    </div>
+                    <p className="mt-1 font-mono text-xs text-gray-500 break-all select-all">
+                      {t.mintAddress}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 sm:shrink-0">
+                  <a
+                    href={`https://pump.fun/coin/${t.mintAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-emerald-600"
+                  >
+                    pump.fun ↗
+                  </a>
+                  <a
+                    href={`https://solscan.io/token/${t.mintAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-emerald-600"
+                  >
+                    Solscan ↗
+                  </a>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Transparency Timeline */}
       <div className="mt-8 glass rounded-xl overflow-hidden">
         <div className="border-b border-gray-200 px-5 py-4">
           <h2 className="text-lg font-semibold">Pipeline Progress</h2>
           <p className="mt-0.5 text-xs text-gray-400">
-            Every step from fees to donation — verifiable on Solscan.
+            Every step from fees to donation — verifiable on-chain.
           </p>
         </div>
         <div className="p-5">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {pipelineProgress.map((step, i) => (
               <div key={step.type} className={`relative rounded-xl border p-4 ${step.done ? "border-emerald-200 bg-emerald-50" : "border-gray-100 bg-gray-50"}`}>
                 {i < pipelineProgress.length - 1 && (
@@ -314,9 +379,7 @@ export default function CampaignDetailPage({
                   {TX_TYPE_LABELS[tx.type] ?? tx.type}
                 </span>
                 <span className="font-mono text-sm text-gray-700">
-                  {tx.type === "FEE_RECEIVED" || tx.type === "SOL_SWAP" || tx.type === "SOL_TRANSFER"
-                    ? `${tx.amountSol.toFixed(4)} SOL`
-                    : null}
+                  {tx.amountSol > 0 ? `${tx.amountSol.toFixed(4)} SOL` : null}
                   {tx.amountUsd != null && tx.amountUsd > 0
                     ? ` $${tx.amountUsd.toFixed(2)}`
                     : null}
@@ -347,63 +410,6 @@ export default function CampaignDetailPage({
           </div>
         </div>
       )}
-
-      {/* Tokens */}
-      <div className="mt-8 glass rounded-xl overflow-hidden">
-        <div className="border-b border-gray-200 px-5 py-4">
-          <h2 className="text-lg font-semibold">Linked Tokens</h2>
-        </div>
-        <div className="p-5">
-          {campaign.tokens.length === 0 ? (
-            <p className="py-4 text-center text-sm text-gray-400">No tokens linked yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 text-left text-[10px] uppercase tracking-wider text-gray-400">
-                    <th className="pb-3 pr-4 font-medium">Mint Address</th>
-                    <th className="pb-3 pr-4 font-medium">Name</th>
-                    <th className="pb-3 pr-4 font-medium">Symbol</th>
-                    <th className="pb-3 pr-4 font-medium">Deployer</th>
-                    <th className="pb-3 font-medium">Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {campaign.tokens.map((t) => (
-                    <tr key={t.id} className="border-b border-gray-100 last:border-0">
-                      <td className="py-3 pr-4 font-mono text-xs text-gray-500">
-                        <a
-                          href={`https://solscan.io/token/${t.mintAddress}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="hover:text-emerald-600 hover:underline"
-                        >
-                          {t.mintAddress.slice(0, 8)}…{t.mintAddress.slice(-6)} ↗
-                        </a>
-                      </td>
-                      <td className="py-3 pr-4 text-gray-700">{t.name || "—"}</td>
-                      <td className="py-3 pr-4 text-gray-700">{t.symbol || "—"}</td>
-                      <td className="py-3 pr-4 font-mono text-xs text-gray-500">
-                        <a
-                          href={`https://solscan.io/account/${t.deployerWallet}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="hover:text-emerald-600 hover:underline"
-                        >
-                          {t.deployerWallet.slice(0, 8)}…{t.deployerWallet.slice(-6)} ↗
-                        </a>
-                      </td>
-                      <td className="py-3 text-xs text-gray-400">
-                        {new Date(t.createdAt).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Fees Section */}
       <div className="mt-8 glass rounded-xl overflow-hidden">
