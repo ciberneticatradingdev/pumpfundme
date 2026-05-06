@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CreateCampaignForm } from "./create-campaign-form";
 import { RegisterTokenForm } from "./register-token-form";
 import { FeeSummaryCard } from "@/components/fees-dashboard";
+import { CampaignTokenImages } from "@/components/campaign-token-images";
 
 interface Token {
   id: string;
@@ -181,19 +182,24 @@ export function CampaignList({ walletAddress, filterByWallet = true }: Props) {
               className="glass glass-hover group rounded-xl p-5 transition-all duration-200 hover:scale-[1.02]"
             >
               {/* Header */}
-              <div className="mb-3 flex items-start justify-between">
-                <Link href={`/campaign/${c.id}`}>
-                  <h3 className="text-lg font-semibold transition-colors hover:text-emerald-600">
-                    {c.name}
-                  </h3>
-                </Link>
-                <span
-                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
-                    statusStyles[c.status] || ""
-                  }`}
-                >
-                  {c.status}
-                </span>
+              <div className="mb-3 flex items-start gap-3">
+                {c.tokens.length > 0 && (
+                  <CampaignTokenImages mints={c.tokens.map(t => t.mintAddress)} size={40} />
+                )}
+                <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                  <Link href={`/campaign/${c.id}`}>
+                    <h3 className="text-lg font-semibold transition-colors hover:text-emerald-600 truncate">
+                      {c.name}
+                    </h3>
+                  </Link>
+                  <span
+                    className={`shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                      statusStyles[c.status] || ""
+                    }`}
+                  >
+                    {c.status}
+                  </span>
+                </div>
               </div>
 
               {c.description && (

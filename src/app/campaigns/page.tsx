@@ -1,5 +1,10 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { CampaignTokenImages } from "@/components/campaign-token-images";
+
+interface TokenRef {
+  mintAddress: string;
+}
 
 interface CampaignWithStats {
   id: string;
@@ -10,6 +15,7 @@ interface CampaignWithStats {
   totalSolReceived: number;
   totalDonatedUsd: number;
   createdAt: string;
+  tokens: TokenRef[];
   _count: { tokens: number };
 }
 
@@ -22,6 +28,7 @@ async function getCampaigns(): Promise<CampaignWithStats[]> {
       where: { status: "ACTIVE", tokens: { some: {} } },
       orderBy: { createdAt: "desc" },
       include: {
+        tokens: { select: { mintAddress: true } },
         _count: { select: { tokens: true } },
         transactions: {
           where: { type: "FEE_RECEIVED", status: "CONFIRMED" },
@@ -89,21 +96,28 @@ export default async function CampaignsPage() {
               href={`/campaign/${campaign.id}`}
               className={`animate-fade-in-up-delay-${Math.min(i + 1, 3)} group glass rounded-xl overflow-hidden transition-all hover:shadow-lg hover:border-emerald-200`}
             >
-              {/* Header */}
+              {/* Header with token images */}
               <div className="border-b border-gray-100 px-5 py-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold group-hover:text-emerald-600 transition-colors">
-                    {campaign.name}
-                  </h3>
-                  <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600">
-                    {campaign.status}
-                  </span>
+                <div className="flex items-center gap-3">
+                  {campaign.tokens.length > 0 && (
+                    <CampaignTokenImages mints={campaign.tokens.map(t => t.mintAddress)} />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold group-hover:text-emerald-600 transition-colors truncate">
+                        {campaign.name}
+                      </h3>
+                      <span className="inline-flex shrink-0 items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600">
+                        {campaign.status}
+                      </span>
+                    </div>
+                    {campaign.description && (
+                      <p className="mt-1 text-sm text-gray-500 line-clamp-2">
+                        {campaign.description}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                {campaign.description && (
-                  <p className="mt-1 text-sm text-gray-500 line-clamp-2">
-                    {campaign.description}
-                  </p>
-                )}
               </div>
 
               {/* Stats */}
