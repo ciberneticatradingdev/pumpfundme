@@ -13,7 +13,10 @@ interface TerminalEvent {
 
 const typeColors: Record<string, string> = {
   fee_received: "text-emerald-600",
+  fee_claimed: "text-emerald-600",
+  sol_swap: "text-blue-600",
   sol_transfer: "text-blue-600",
+  usdt_transfer: "text-orange-600",
   donation: "text-purple-600",
   campaign_created: "text-yellow-600",
   token_registered: "text-cyan-600",

@@ -112,15 +112,37 @@ export async function getPipelineStatus(): Promise<PipelineStatus> {
 }
 
 /**
+ * Get the primary campaign for pending claims (the one with the most unswapped SOL).
+ * Returns campaignId or undefined if claims have no campaign.
+ */
+async function getPrimaryCampaignForPendingClaims(): Promise<string | undefined> {
+  const result = await db.transaction.groupBy({
+    by: ['campaignId'],
+    where: { type: 'FEE_RECEIVED', status: 'CONFIRMED', campaignId: { not: null } },
+    _sum: { amountSol: true },
+    orderBy: { _sum: { amountSol: 'desc' } },
+    take: 1,
+  });
+  return (result[0]?.campaignId as string) ?? undefined;
+}
+
+/**
  * Run one pipeline cycle (LEDGER-BASED):
  * 1. Check how much SOL from claims hasn't been swapped → swap only that
  * 2. Check how much USDT from swaps hasn't been transferred → transfer only that
+ * Campaign attribution: swaps/transfers are linked to the campaign that generated the claims.
  */
 async function runPipelineCycle(): Promise<void> {
   getKeypair();
   lastRunAt = new Date();
 
   console.log(`[pipeline] --- cycle start (ledger-based) ---`);
+
+  // Determine which campaign owns the pending claims
+  const campaignId = await getPrimaryCampaignForPendingClaims();
+  if (campaignId) {
+    console.log(`[pipeline] primary campaign: ${campaignId}`);
+  }
 
   // Step 1: How much claim SOL is pending swap?
   const pendingSol = await getPendingSwapSol();
@@ -143,7 +165,7 @@ async function runPipelineCycle(): Promise<void> {
     } else {
       const swapSol = swapLamports / LAMPORTS_PER_SOL;
       console.log(`[pipeline] swapping ${swapSol.toFixed(6)} SOL → USDT (from claims only)`);
-      const swapResult = await swapSolToUsdt(swapLamports);
+      const swapResult = await swapSolToUsdt(swapLamports, campaignId);
       if (swapResult.success) {
         lastSwapAt = new Date();
         console.log(`[pipeline] swap OK: ${swapResult.amountUsdt.toFixed(2)} USDT received`);
@@ -155,17 +177,15 @@ async function runPipelineCycle(): Promise<void> {
     console.log(`[pipeline] below threshold — skipping swap`);
   }
 
-  // Step 2: Transfer USDT to Kolo — use ACTUAL wallet balance (not ledger)
-  // Ledger can be stale if wallet changed. Real balance is the source of truth.
-  const keypairForBalance = getKeypair();
-  const actualUsdt = await getSwapUsdtBalance(keypairForBalance.publicKey);
-  console.log(`[pipeline] USDT in wallet: ${actualUsdt.toFixed(2)} (ledger pending: ${(await getPendingTransferUsdt()).toFixed(2)})`);
+  // Step 2: How much USDT from swaps is pending transfer?
+  const pendingUsdt = await getPendingTransferUsdt();
+  console.log(`[pipeline] pending transfer from swaps: ${pendingUsdt.toFixed(2)} USDT`);
 
-  if (actualUsdt > 0.01) { // min $0.01 to avoid dust transfers
-    // Transfer actual balance, not ledger amount
-    const rawAmount = Math.floor(actualUsdt * 1_000_000);
-    console.log(`[pipeline] transferring ${actualUsdt.toFixed(2)} USDT → Kolo`);
-    const transferResult = await transferUsdtToKolo(rawAmount);
+  if (pendingUsdt > 0.01) { // min $0.01 to avoid dust transfers
+    // Convert to raw amount (6 decimals)
+    const rawAmount = Math.floor(pendingUsdt * 1_000_000);
+    console.log(`[pipeline] transferring ${pendingUsdt.toFixed(2)} USDT → Kolo`);
+    const transferResult = await transferUsdtToKolo(rawAmount, campaignId);
     if (transferResult.success) {
       lastTransferAt = new Date();
       console.log(`[pipeline] transfer OK: ${transferResult.amountUsdt.toFixed(2)} USDT sent to Kolo`);
@@ -173,7 +193,7 @@ async function runPipelineCycle(): Promise<void> {
       console.error(`[pipeline] transfer failed: ${transferResult.error}`);
     }
   } else {
-    console.log(`[pipeline] no USDT to transfer — skipping`);
+    console.log(`[pipeline] no USDT pending transfer — skipping`);
   }
 
   console.log(`[pipeline] --- cycle end ---`);

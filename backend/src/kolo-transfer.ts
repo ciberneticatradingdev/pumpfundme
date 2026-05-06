@@ -56,7 +56,7 @@ export async function getUsdtBalance(owner: PublicKey): Promise<number> {
  * Transfer ALL USDT from fee wallet → Kolo wallet.
  * Creates Kolo's USDT ATA if it doesn't exist.
  */
-export async function transferUsdtToKolo(amountRaw?: number): Promise<TransferResult> {
+export async function transferUsdtToKolo(amountRaw?: number, campaignId?: string): Promise<TransferResult> {
   const keypair = getKeypair();
   const koloWallet = new PublicKey(config.koloWallet);
 
@@ -134,6 +134,7 @@ export async function transferUsdtToKolo(amountRaw?: number): Promise<TransferRe
         amountUsd: amountUsdt,
         txSignature,
         status: 'CONFIRMED',
+        ...(campaignId ? { campaignId } : {}),
         metadata: {
           fromWallet: keypair.publicKey.toBase58(),
           toWallet: config.koloWallet,
@@ -147,6 +148,7 @@ export async function transferUsdtToKolo(amountRaw?: number): Promise<TransferRe
       data: {
         type: 'usdt_transfer',
         message: `Transferred ${amountUsdt.toFixed(2)} USDT to Kolo card wallet`,
+        ...(campaignId ? { campaignId } : {}),
         data: {
           txSignature,
           amountUsdt,

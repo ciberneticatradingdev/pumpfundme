@@ -99,7 +99,7 @@ export async function getUsdtBalance(owner: PublicKey): Promise<number> {
  * Swap SOL → USDT via Jupiter Aggregator.
  * amountLamports: amount of SOL to swap in lamports.
  */
-export async function swapSolToUsdt(amountLamports: number): Promise<SwapResult> {
+export async function swapSolToUsdt(amountLamports: number, campaignId?: string): Promise<SwapResult> {
   const keypair = getKeypair();
   const amountSol = amountLamports / LAMPORTS_PER_SOL;
 
@@ -171,6 +171,7 @@ export async function swapSolToUsdt(amountLamports: number): Promise<SwapResult>
         amountUsd: amountUsdt,
         txSignature,
         status: 'CONFIRMED',
+        ...(campaignId ? { campaignId } : {}),
         metadata: {
           route: (quoteRes.routePlan?.map((r) => r.swapInfo?.label).filter((x): x is string => !!x) ?? []) as string[],
           pricePerSol,
@@ -186,6 +187,7 @@ export async function swapSolToUsdt(amountLamports: number): Promise<SwapResult>
       data: {
         type: 'sol_swap',
         message: `Swapped ${amountSol.toFixed(6)} SOL → ${amountUsdt.toFixed(2)} USDT ($${pricePerSol.toFixed(2)}/SOL)`,
+        ...(campaignId ? { campaignId } : {}),
         data: { txSignature, amountSol, amountUsdt, pricePerSol },
       },
     });
