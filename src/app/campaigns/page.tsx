@@ -19,7 +19,7 @@ async function getCampaigns(): Promise<CampaignWithStats[]> {
   if (!prisma) return [];
   try {
     const campaigns = await prisma.campaign.findMany({
-      where: { status: "ACTIVE" },
+      where: { status: "ACTIVE", tokens: { some: {} } },
       orderBy: { createdAt: "desc" },
       include: { _count: { select: { tokens: true } } },
     });
