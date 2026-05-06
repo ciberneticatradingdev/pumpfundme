@@ -155,14 +155,16 @@ async function runPipelineCycle(): Promise<void> {
     console.log(`[pipeline] below threshold — skipping swap`);
   }
 
-  // Step 2: How much USDT from swaps is pending transfer?
-  const pendingUsdt = await getPendingTransferUsdt();
-  console.log(`[pipeline] pending transfer from swaps: ${pendingUsdt.toFixed(2)} USDT`);
+  // Step 2: Transfer USDT to Kolo — use ACTUAL wallet balance (not ledger)
+  // Ledger can be stale if wallet changed. Real balance is the source of truth.
+  const keypairForBalance = getKeypair();
+  const actualUsdt = await getSwapUsdtBalance(keypairForBalance.publicKey);
+  console.log(`[pipeline] USDT in wallet: ${actualUsdt.toFixed(2)} (ledger pending: ${(await getPendingTransferUsdt()).toFixed(2)})`);
 
-  if (pendingUsdt > 0.01) { // min $0.01 to avoid dust transfers
-    // Convert to raw amount (6 decimals)
-    const rawAmount = Math.floor(pendingUsdt * 1_000_000);
-    console.log(`[pipeline] transferring ${pendingUsdt.toFixed(2)} USDT → Kolo`);
+  if (actualUsdt > 0.01) { // min $0.01 to avoid dust transfers
+    // Transfer actual balance, not ledger amount
+    const rawAmount = Math.floor(actualUsdt * 1_000_000);
+    console.log(`[pipeline] transferring ${actualUsdt.toFixed(2)} USDT → Kolo`);
     const transferResult = await transferUsdtToKolo(rawAmount);
     if (transferResult.success) {
       lastTransferAt = new Date();
@@ -171,7 +173,7 @@ async function runPipelineCycle(): Promise<void> {
       console.error(`[pipeline] transfer failed: ${transferResult.error}`);
     }
   } else {
-    console.log(`[pipeline] no USDT pending transfer — skipping`);
+    console.log(`[pipeline] no USDT to transfer — skipping`);
   }
 
   console.log(`[pipeline] --- cycle end ---`);
