@@ -11,6 +11,7 @@ export function Navbar() {
   const pathname = usePathname();
 
   const links = [
+    { href: "/campaigns", label: "Campaigns" },
     { href: "/dashboard", label: "Dashboard" },
     { href: "/transactions", label: "Transparency" },
     { href: "/terminal", label: "Terminal" },
