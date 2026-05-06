@@ -103,7 +103,7 @@ const trustCards = [
 const faqs = [
   {
     q: "How does PumpFundMe work?",
-    a: "You create a campaign linked to a GoFundMe page, deploy a memecoin on pump.fun, and set pumpfundme.sol as 100% fee receiver. Trading fees from your token are automatically collected and converted into donations for your cause.",
+    a: "You create a campaign linked to a GoFundMe page, deploy a memecoin on pump.fun, and set our wallet as 100% fee receiver. Trading fees from your token are automatically collected and converted into donations for your cause.",
   },
   {
     q: "Do you charge any fees?",

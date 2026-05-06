@@ -29,9 +29,7 @@ export function CopyWallet() {
   return (
     <div className="mt-2 max-w-xs text-sm text-gray-500">
       <p>
-        Deploy your token on pump.fun and set{" "}
-        <span className="font-semibold text-emerald-600">pumpfundme.sol</span>{" "}
-        as 100% fee receiver.
+        Deploy your token on pump.fun and set our wallet as 100% fee receiver.
       </p>
       <button
         onClick={handleCopy}

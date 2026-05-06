@@ -66,8 +66,7 @@ export function RegisterTokenForm({ campaignId, walletAddress, onSuccess, onCanc
       <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2.5">
         <p className="text-xs font-medium text-amber-700">Before registering:</p>
         <p className="mt-1 text-xs text-amber-600">
-          Set <span className="font-semibold">pumpfundme.sol</span>{" "}
-          (<span className="font-mono text-[10px] break-all">{PUMPFUNDME_FEE_WALLET}</span>){" "}
+          Set <span className="font-mono text-[10px] break-all">{PUMPFUNDME_FEE_WALLET}</span>{" "}
           as 100% fee receiver on pump.fun for this token.
         </p>
       </div>
