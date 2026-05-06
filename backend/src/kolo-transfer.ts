@@ -64,10 +64,17 @@ export async function transferUsdtToKolo(amountRaw?: number, campaignId?: string
   const destAta = await getAssociatedTokenAddress(USDT_MINT, koloWallet);
 
   try {
-    // Get actual balance if amountRaw not provided
-    if (!amountRaw) {
-      const balanceInfo = await connection.getTokenAccountBalance(sourceAta);
-      amountRaw = parseInt(balanceInfo.value.amount, 10);
+    // Always check actual balance — never send more than we have
+    const balanceInfo = await connection.getTokenAccountBalance(sourceAta);
+    const actualBalance = parseInt(balanceInfo.value.amount, 10);
+
+    if (amountRaw) {
+      if (amountRaw > actualBalance) {
+        console.log(`[transfer] capping amount: ledger says ${amountRaw} but wallet has ${actualBalance} (slippage delta)`);
+        amountRaw = actualBalance;
+      }
+    } else {
+      amountRaw = actualBalance;
     }
 
     if (amountRaw <= 0) {
