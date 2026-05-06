@@ -34,15 +34,30 @@ function getKeypair(): Keypair {
 }
 
 /**
- * Fetch current SOL price in USD via Jupiter price API.
+ * Fetch current SOL price in USD.
+ * Tries CoinGecko first, falls back to Jupiter quote.
  */
 async function getSolPriceUsd(): Promise<number> {
+  // Try CoinGecko
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+    if (res.ok) {
+      const data = await res.json() as { solana?: { usd?: number } };
+      const price = data.solana?.usd ?? 0;
+      if (price > 0) return price;
+    }
+  } catch {}
+
+  // Fallback: Jupiter quote (1 SOL → USDC)
   const SOL_MINT = 'So11111111111111111111111111111111111111112';
-  const res = await fetch(`https://api.jup.ag/price/v2?ids=${SOL_MINT}`);
-  if (!res.ok) throw new Error(`Jupiter price API failed: ${res.status}`);
-  const data = await res.json() as { data: Record<string, { price: string }> };
-  const price = parseFloat(data.data[SOL_MINT]?.price ?? '0');
-  if (price <= 0) throw new Error('Invalid SOL price from Jupiter');
+  const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+  const res = await fetch(
+    `https://api.jup.ag/swap/v1/quote?inputMint=${SOL_MINT}&outputMint=${USDC_MINT}&amount=1000000000&slippageBps=50`
+  );
+  if (!res.ok) throw new Error(`All price sources failed (Jupiter quote: ${res.status})`);
+  const data = await res.json() as { outAmount?: string };
+  const price = parseInt(data.outAmount ?? '0', 10) / 1_000_000;
+  if (price <= 0) throw new Error('Invalid SOL price from Jupiter quote');
   return price;
 }
 
