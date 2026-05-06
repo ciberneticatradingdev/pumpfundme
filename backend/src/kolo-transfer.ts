@@ -2,15 +2,11 @@ import {
   Connection,
   Keypair,
   PublicKey,
+  SystemProgram,
   TransactionMessage,
   VersionedTransaction,
+  LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
-import {
-  getAssociatedTokenAddress,
-  createAssociatedTokenAccountInstruction,
-  createTransferInstruction,
-  TOKEN_PROGRAM_ID,
-} from '@solana/spl-token';
 import bs58 from 'bs58';
 import { config } from './config';
 import { db } from './db';
@@ -18,13 +14,11 @@ import { withRetry } from './utils';
 
 const connection = new Connection(config.solanaRpcUrl, 'confirmed');
 
-const USDT_MINT = new PublicKey(config.usdtMint);
-const USDT_DECIMALS = 6;
-
 export interface TransferResult {
   success: boolean;
   txSignature: string;
-  amountUsdt: number;
+  amountSol: number;
+  amountUsd: number;
   error?: string;
 }
 
@@ -40,83 +34,66 @@ function getKeypair(): Keypair {
 }
 
 /**
- * Get USDT balance for a wallet (human-readable).
+ * Fetch current SOL price in USD via Jupiter price API.
  */
-export async function getUsdtBalance(owner: PublicKey): Promise<number> {
-  try {
-    const ata = await getAssociatedTokenAddress(USDT_MINT, owner);
-    const info = await connection.getTokenAccountBalance(ata);
-    return parseFloat(info.value.uiAmountString ?? '0');
-  } catch {
-    return 0;
-  }
+async function getSolPriceUsd(): Promise<number> {
+  const SOL_MINT = 'So11111111111111111111111111111111111111112';
+  const res = await fetch(`https://api.jup.ag/price/v2?ids=${SOL_MINT}`);
+  if (!res.ok) throw new Error(`Jupiter price API failed: ${res.status}`);
+  const data = await res.json() as { data: Record<string, { price: string }> };
+  const price = parseFloat(data.data[SOL_MINT]?.price ?? '0');
+  if (price <= 0) throw new Error('Invalid SOL price from Jupiter');
+  return price;
 }
 
 /**
- * Transfer ALL USDT from fee wallet → Kolo wallet.
- * Creates Kolo's USDT ATA if it doesn't exist.
+ * Transfer SOL from fee wallet → Kolo wallet.
+ * Records the USD value at transfer time.
+ *
+ * @param amountLamports - amount to transfer; if omitted, sends all available minus gas reserve
  */
-export async function transferUsdtToKolo(amountRaw?: number, campaignId?: string): Promise<TransferResult> {
+export async function transferSolToKolo(amountLamports?: number, campaignId?: string): Promise<TransferResult> {
   const keypair = getKeypair();
   const koloWallet = new PublicKey(config.koloWallet);
-
-  const sourceAta = await getAssociatedTokenAddress(USDT_MINT, keypair.publicKey);
-  const destAta = await getAssociatedTokenAddress(USDT_MINT, koloWallet);
+  const GAS_RESERVE = 10_000_000; // 0.01 SOL
 
   try {
-    // Always check actual balance — never send more than we have
-    const balanceInfo = await connection.getTokenAccountBalance(sourceAta);
-    const actualBalance = parseInt(balanceInfo.value.amount, 10);
+    const walletBalance = await connection.getBalance(keypair.publicKey, 'confirmed');
 
-    if (amountRaw) {
-      if (amountRaw > actualBalance) {
-        console.log(`[transfer] capping amount: ledger says ${amountRaw} but wallet has ${actualBalance} (slippage delta)`);
-        amountRaw = actualBalance;
-      }
-    } else {
-      amountRaw = actualBalance;
+    if (!amountLamports) {
+      amountLamports = walletBalance - GAS_RESERVE;
     }
 
-    if (amountRaw <= 0) {
-      return { success: false, txSignature: '', amountUsdt: 0, error: 'No USDT to transfer' };
+    // Cap at what we actually have (minus gas)
+    const maxSend = walletBalance - GAS_RESERVE;
+    if (amountLamports > maxSend) {
+      console.log(`[transfer] capping: requested ${amountLamports} but max sendable is ${maxSend} lamports`);
+      amountLamports = maxSend;
     }
 
-    const amountUsdt = amountRaw / Math.pow(10, USDT_DECIMALS);
-    console.log(`[transfer] sending ${amountUsdt.toFixed(2)} USDT → Kolo (${config.koloWallet.slice(0, 10)}...)`);
-
-    const instructions = [];
-
-    // Create dest ATA if needed
-    const destInfo = await connection.getAccountInfo(destAta);
-    if (!destInfo) {
-      console.log(`[transfer] creating USDT ATA for Kolo wallet...`);
-      instructions.push(
-        createAssociatedTokenAccountInstruction(
-          keypair.publicKey,
-          destAta,
-          koloWallet,
-          USDT_MINT,
-        ),
-      );
+    if (amountLamports <= 0) {
+      return { success: false, txSignature: '', amountSol: 0, amountUsd: 0, error: 'No SOL to transfer' };
     }
 
-    // Transfer instruction
-    instructions.push(
-      createTransferInstruction(
-        sourceAta,
-        destAta,
-        keypair.publicKey,
-        amountRaw,
-        [],
-        TOKEN_PROGRAM_ID,
-      ),
-    );
+    const amountSol = amountLamports / LAMPORTS_PER_SOL;
+
+    // Get current SOL price
+    const solPrice = await withRetry(() => getSolPriceUsd(), 3, 500);
+    const amountUsd = amountSol * solPrice;
+
+    console.log(`[transfer] sending ${amountSol.toFixed(6)} SOL ($${amountUsd.toFixed(2)} @ $${solPrice.toFixed(2)}/SOL) → Kolo (${config.koloWallet.slice(0, 10)}...)`);
+
+    const instruction = SystemProgram.transfer({
+      fromPubkey: keypair.publicKey,
+      toPubkey: koloWallet,
+      lamports: amountLamports,
+    });
 
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
     const message = new TransactionMessage({
       payerKey: keypair.publicKey,
       recentBlockhash: blockhash,
-      instructions,
+      instructions: [instruction],
     }).compileToV0Message();
 
     const tx = new VersionedTransaction(message);
@@ -131,44 +108,47 @@ export async function transferUsdtToKolo(amountRaw?: number, campaignId?: string
       'confirmed',
     );
 
-    console.log(`[transfer] ✅ sent ${amountUsdt.toFixed(2)} USDT → Kolo | tx: ${txSignature.slice(0, 20)}...`);
+    console.log(`[transfer] ✅ sent ${amountSol.toFixed(6)} SOL ($${amountUsd.toFixed(2)}) → Kolo | tx: ${txSignature.slice(0, 20)}...`);
 
-    // Log to DB
+    // Log to DB — record as USD value at transfer time
     await db.transaction.create({
       data: {
         type: 'USDT_TRANSFER',
-        amountSol: 0,
-        amountUsd: amountUsdt,
+        amountSol,
+        amountUsd: amountUsd,
         txSignature,
         status: 'CONFIRMED',
         ...(campaignId ? { campaignId } : {}),
         metadata: {
           fromWallet: keypair.publicKey.toBase58(),
           toWallet: config.koloWallet,
-          mint: config.usdtMint,
-          amountRaw,
+          amountLamports,
+          solPriceUsd: solPrice,
+          transferType: 'SOL_DIRECT',
         },
       } as any,
     });
 
     await db.event.create({
       data: {
-        type: 'usdt_transfer',
-        message: `Transferred ${amountUsdt.toFixed(2)} USDT to Kolo card wallet`,
+        type: 'sol_transfer',
+        message: `Transferred ${amountSol.toFixed(6)} SOL ($${amountUsd.toFixed(2)}) to Kolo wallet`,
         ...(campaignId ? { campaignId } : {}),
         data: {
           txSignature,
-          amountUsdt,
+          amountSol,
+          amountUsd,
+          solPriceUsd: solPrice,
           fromWallet: keypair.publicKey.toBase58(),
           toWallet: config.koloWallet,
         },
       },
     });
 
-    return { success: true, txSignature, amountUsdt };
+    return { success: true, txSignature, amountSol, amountUsd };
   } catch (err: unknown) {
     const error = err instanceof Error ? err.message : String(err);
     console.error(`[transfer] ❌ failed:`, error);
-    return { success: false, txSignature: '', amountUsdt: 0, error };
+    return { success: false, txSignature: '', amountSol: 0, amountUsd: 0, error };
   }
 }

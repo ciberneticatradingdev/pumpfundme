@@ -80,21 +80,18 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
   if (method === 'GET' && url.startsWith('/api/transactions/summary')) {
     try {
-      const [claimed, swapped, transferred, donated] = await Promise.all([
+      const [claimed, transferred, donated] = await Promise.all([
         db.transaction.aggregate({ where: { type: 'FEE_RECEIVED', status: 'CONFIRMED' }, _sum: { amountSol: true }, _count: true }),
-        db.transaction.aggregate({ where: { type: 'SOL_SWAP', status: 'CONFIRMED' }, _sum: { amountSol: true, amountUsd: true }, _count: true }),
-        db.transaction.aggregate({ where: { type: 'USDT_TRANSFER', status: 'CONFIRMED' }, _sum: { amountUsd: true }, _count: true }),
+        db.transaction.aggregate({ where: { type: 'USDT_TRANSFER', status: 'CONFIRMED' }, _sum: { amountSol: true, amountUsd: true }, _count: true }),
         db.transaction.aggregate({ where: { type: 'DONATION', status: 'CONFIRMED' }, _sum: { amountUsd: true }, _count: true }),
       ]);
       send(res, 200, {
         totalSolClaimed: claimed._sum.amountSol ?? 0,
         totalClaimCount: claimed._count,
-        totalSolSwapped: swapped._sum.amountSol ?? 0,
-        totalUsdtFromSwaps: swapped._sum.amountUsd ?? 0,
-        totalSwapCount: swapped._count,
-        totalUsdtTransferred: transferred._sum.amountUsd ?? 0,
+        totalSolTransferred: transferred._sum.amountSol ?? 0,
+        totalUsdTransferred: transferred._sum.amountUsd ?? 0,
         totalTransferCount: transferred._count,
-        totalUsdtDonated: donated._sum.amountUsd ?? 0,
+        totalUsdDonated: donated._sum.amountUsd ?? 0,
         totalDonationCount: donated._count,
       });
     } catch (err) {
