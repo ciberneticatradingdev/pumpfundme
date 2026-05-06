@@ -48,21 +48,29 @@ interface Campaign {
   events: Event[];
 }
 
-const TX_TYPE_LABELS: Record<string, string> = {
-  FEE_RECEIVED: "Fee Claimed",
-  SOL_SWAP: "SOL → USDT",
-  USDT_TRANSFER: "SOL → Kolo",
-  SOL_TRANSFER: "SOL → Kolo",
-  DONATION: "Donation",
-};
+function getTxLabel(tx: { type: string; metadata?: Record<string, unknown> | null }): string {
+  if (tx.metadata?.correction) return "Correction";
+  const labels: Record<string, string> = {
+    FEE_RECEIVED: "Fee Claimed",
+    SOL_SWAP: "SOL → USDT",
+    USDT_TRANSFER: "SOL → Kolo",
+    SOL_TRANSFER: "SOL → Kolo",
+    DONATION: "Donation",
+  };
+  return labels[tx.type] ?? tx.type;
+}
 
-const TX_TYPE_COLORS: Record<string, string> = {
-  FEE_RECEIVED: "bg-emerald-100 text-emerald-700",
-  SOL_SWAP: "bg-blue-100 text-blue-700",
-  USDT_TRANSFER: "bg-purple-100 text-purple-700",
-  SOL_TRANSFER: "bg-purple-100 text-purple-700",
-  DONATION: "bg-pink-100 text-pink-700",
-};
+function getTxColor(tx: { type: string; metadata?: Record<string, unknown> | null }): string {
+  if (tx.metadata?.correction) return "bg-orange-100 text-orange-700";
+  const colors: Record<string, string> = {
+    FEE_RECEIVED: "bg-emerald-100 text-emerald-700",
+    SOL_SWAP: "bg-blue-100 text-blue-700",
+    USDT_TRANSFER: "bg-purple-100 text-purple-700",
+    SOL_TRANSFER: "bg-purple-100 text-purple-700",
+    DONATION: "bg-pink-100 text-pink-700",
+  };
+  return colors[tx.type] ?? "bg-gray-100 text-gray-600";
+}
 
 const PIPELINE_STEPS = [
   { type: "FEE_RECEIVED", label: "Fees Claimed", icon: "💰" },
@@ -74,6 +82,7 @@ const typeColors: Record<string, string> = {
   fee_received: "text-emerald-400",
   sol_transfer: "text-blue-400",
   sol_swap: "text-blue-400",
+  correction: "text-orange-400",
   donation: "text-purple-400",
   campaign_created: "text-yellow-400",
   token_registered: "text-cyan-400",
@@ -372,8 +381,8 @@ export default function CampaignDetailPage({
           <div className="divide-y divide-gray-50">
             {transactions.map((tx) => (
               <div key={tx.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50/50 transition-colors">
-                <span className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${TX_TYPE_COLORS[tx.type] ?? "bg-gray-100 text-gray-600"}`}>
-                  {TX_TYPE_LABELS[tx.type] ?? tx.type}
+                <span className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${getTxColor(tx)}`}>
+                  {getTxLabel(tx)}
                 </span>
                 <span className="font-mono text-sm text-gray-700">
                   {tx.amountSol > 0 ? `${tx.amountSol.toFixed(4)} SOL` : null}
