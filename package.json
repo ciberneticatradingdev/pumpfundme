@@ -1,7 +1,9 @@
 {
-  "name": "app",
-  "version": "0.1.0",
+  "name": "pumpfundme",
+  "version": "1.0.0",
+  "description": "Turn memecoins into real-world donations — 0% commission, fully transparent.",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
