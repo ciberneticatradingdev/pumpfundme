@@ -21,9 +21,19 @@ async function getCampaigns(): Promise<CampaignWithStats[]> {
     const campaigns = await prisma.campaign.findMany({
       where: { status: "ACTIVE", tokens: { some: {} } },
       orderBy: { createdAt: "desc" },
-      include: { _count: { select: { tokens: true } } },
+      include: {
+        _count: { select: { tokens: true } },
+        transactions: {
+          where: { type: "FEE_RECEIVED", status: "CONFIRMED" },
+          select: { amountSol: true },
+        },
+      },
     });
-    return campaigns as unknown as CampaignWithStats[];
+    return campaigns.map(({ transactions, ...c }) => ({
+      ...c,
+      totalSolReceived: transactions.reduce((sum, tx) => sum + (tx.amountSol ?? 0), 0),
+      createdAt: c.createdAt.toISOString(),
+    })) as CampaignWithStats[];
   } catch {
     return [];
   }

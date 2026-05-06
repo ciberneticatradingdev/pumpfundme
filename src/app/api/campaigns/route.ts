@@ -16,9 +16,20 @@ export async function GET(request: NextRequest) {
       include: {
         tokens: true,
         _count: { select: { tokens: true } },
+        transactions: {
+          where: { type: "FEE_RECEIVED", status: "CONFIRMED" },
+          select: { amountSol: true },
+        },
       },
     });
-    return NextResponse.json(campaigns);
+
+    // Compute totalSolReceived from actual transactions instead of stale DB field
+    const enriched = campaigns.map(({ transactions, ...c }) => ({
+      ...c,
+      totalSolReceived: transactions.reduce((sum, tx) => sum + (tx.amountSol ?? 0), 0),
+    }));
+
+    return NextResponse.json(enriched);
   } catch (error) {
     console.error("GET /api/campaigns error:", error);
     return NextResponse.json(

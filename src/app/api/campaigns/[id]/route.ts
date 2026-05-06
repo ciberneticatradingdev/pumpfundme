@@ -19,6 +19,10 @@ export async function GET(
       include: {
         tokens: { orderBy: { createdAt: "desc" } },
         events: { orderBy: { createdAt: "desc" }, take: 50 },
+        transactions: {
+          where: { type: "FEE_RECEIVED", status: "CONFIRMED" },
+          select: { amountSol: true },
+        },
       },
     });
 
@@ -29,9 +33,14 @@ export async function GET(
       );
     }
 
+    // Compute totalSolReceived from actual transactions
+    const { transactions: feeTxs, ...rest } = campaign;
+    const realSolReceived = feeTxs.reduce((sum, tx) => sum + (tx.amountSol ?? 0), 0);
+
     // Normalize events for frontend
     const normalized = {
-      ...campaign,
+      ...rest,
+      totalSolReceived: realSolReceived,
       events: campaign.events.map((e: { id: string; type: string; message: string; createdAt: Date }) => ({
         id: e.id,
         type: e.type,
